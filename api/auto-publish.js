@@ -208,6 +208,49 @@ function evaluateAntiSpam(state, body, now) {
   };
 }
 
+async function enqueueDeal(body, dealId, dueAt, reason) {
+  const queueKey = "affareradar:queue";
+  const itemKey = `affareradar:queue:item:${dealId}`;
+  const payload = {
+    body,
+    dealId,
+    dueAt,
+    queuedAt:nowIso(),
+    reason,
+    attempts:Number(body.__queueAttempts || 0)
+  };
+
+  try {
+    const cfg = redisConfig();
+    if (cfg) {
+      await redisCommand("SET", itemKey, JSON.stringify(payload), "EX", 86400);
+      await redisCommand("ZADD", queueKey, String(dueAt), dealId);
+      return { queued:true, mode:"persistent_upstash_redis", dueAt:nowIso(dueAt) };
+    }
+  } catch {}
+
+  if (!memory.queue) memory.queue = new Map();
+  memory.queue.set(dealId, payload);
+  return { queued:true, mode:"best_effort_in_memory", dueAt:nowIso(dueAt) };
+}
+
+function computeQueueDueAt(antiSpamState, antiSpam, now) {
+  const minGapMinutes = Number(process.env.ANTISPAM_MIN_GAP_MINUTES || 5);
+  const minGapMs = Math.max(1, minGapMinutes) * 60 * 1000;
+  const failures = antiSpam.failures || [];
+
+  if (failures.includes("minimum_gap") && antiSpamState.lastPublishAt) {
+    return Math.max(now + 60 * 1000, antiSpamState.lastPublishAt + minGapMs + 5000);
+  }
+
+  if (failures.includes("global_hourly_limit") || failures.includes("category_hourly_limit")) {
+    const nextHour = (Math.floor(now / 3600000) + 1) * 3600000;
+    return nextHour + 60 * 1000;
+  }
+
+  return now + minGapMs;
+}
+
 async function recordAntiSpam(state, category, now) {
   if (state.mode === "persistent_upstash_redis") {
     try {
@@ -371,13 +414,27 @@ export default async function handler(req, res) {
   const antiSpam = evaluateAntiSpam(antiSpamState, body, now);
 
   if (!antiSpam.passed) {
+    const dueAt = computeQueueDueAt(antiSpamState, antiSpam, now);
+    const queue = await enqueueDeal(body, dealId, dueAt, "anti_spam");
+
+    const queuedLifecycle = {
+      ...(lifecycleStore.value || {}),
+      dealId,
+      status:"QUEUED",
+      queuedAt:nowIso(now),
+      scheduledFor:nowIso(dueAt),
+      queueReason:antiSpam.failures
+    };
+    await writeLifecycle(lifecycleStore, dealId, queuedLifecycle);
+
     return res.status(200).json({
       ok:true,
       published:false,
-      decision:"deferred",
+      decision:"queued",
       reason:"anti_spam",
-      lifecycle:lifecycleStore.value?.status || "VERIFIED",
-      antiSpam
+      lifecycle:"QUEUED",
+      antiSpam,
+      queue
     });
   }
 
