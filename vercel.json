@@ -7,7 +7,7 @@
   },
   "crons": [
     {
-      "path": "/api/discover-amazon",
+      "path": "/api/discover-multisource",
       "schedule": "0 7 * * *"
     },
     {
