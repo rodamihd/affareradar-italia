@@ -1,3 +1,5 @@
+import { deepLinkUrl, attributionMeta } from "../lib/affiliate-links.js";
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ ok:false, error:"method_not_allowed" });
@@ -43,7 +45,14 @@ export default async function handler(req, res) {
 
   const shortReason = reason ? String(reason).slice(0, 180) : null;
   const channelUrl = bodyChannelUrl || process.env.TELEGRAM_CHANNEL_URL || "";
-  const amazonAppUrl = appUrl || amazonUrl;
+  const contentType =
+    historicalLow ? "historical_low" :
+    dealType === "price_error" ? "price_error" :
+    (coupon || stack) ? "coupon_stack" :
+    (Number.isFinite(scoreNum) && scoreNum >= 90 ? "top_deal" : "deal");
+
+  const finalAmazonUrl = deepLinkUrl(amazonUrl, "telegram", contentType);
+  const attribution = attributionMeta("telegram", contentType);
 
   const shareOfferText = [
     "🔥 Guarda questa offerta trovata da AffareRadar Italia",
@@ -53,14 +62,14 @@ export default async function handler(req, res) {
   ].filter(Boolean).join("\n");
 
   const shareOfferUrl =
-    `https://t.me/share/url?url=${encodeURIComponent(amazonUrl)}&text=${encodeURIComponent(shareOfferText)}`;
+    `https://t.me/share/url?url=${encodeURIComponent(finalAmazonUrl)}&text=${encodeURIComponent(shareOfferText)}`;
 
   const whatsappShareText = [
     "🔥 Guarda questa offerta trovata da AffareRadar Italia",
     title,
     effectivePrice ? `Prezzo effettivo: ${effectivePrice}` : `Prezzo: ${price}`,
     discount ? `Sconto: ${discount}` : null,
-    amazonUrl
+    finalAmazonUrl
   ].filter(Boolean).join("\n");
 
   const whatsappShareUrl =
@@ -95,7 +104,7 @@ export default async function handler(req, res) {
   if (caption.length > 1000) caption = caption.slice(0, 997) + "...";
 
   const inlineKeyboard = [
-    [{ text:"🛒 Vedi offerta su Amazon", url:amazonUrl }],
+    [{ text:"🛒 Vedi offerta su Amazon", url:finalAmazonUrl }],
     [{ text:"📤 Invia l'offerta ad un amico", url:shareOfferUrl }],
     [{ text:"🟢 Condividi su WhatsApp", url:whatsappShareUrl }]
   ];
@@ -132,6 +141,7 @@ export default async function handler(req, res) {
     ok:true,
     telegram_message_id:data.result?.message_id,
     badge:autoBadge,
-    target:channelId ? "channel" : "fallback_chat"
+    target:channelId ? "channel" : "fallback_chat",
+    attribution
   });
 }
