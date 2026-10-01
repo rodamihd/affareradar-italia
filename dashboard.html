@@ -62,6 +62,15 @@
     </div>
 
     <div class="panel">
+      <strong>Strumenti canale Telegram</strong>
+      <div class="actions" style="margin-top:10px">
+        <button onclick="channelTool('/api/init-channel','POST')">Pubblica/Fissa messaggio benvenuto</button>
+        <button class="secondary" onclick="channelTool('/api/daily-top5','POST')">Pubblica Top 5 adesso</button>
+      </div>
+      <div id="channelToolMsg" class="muted" style="margin-top:10px"></div>
+    </div>
+
+    <div class="panel">
       <strong>Moduli / Agent</strong>
       <div class="statusrow" id="modules"></div>
     </div>
@@ -172,6 +181,25 @@ async function loadData(){
     msg.textContent='Accesso/lettura fallita: '+err.message;
   }
 }
+async function channelTool(path,method){
+  const secret=document.getElementById('secret').value.trim();
+  const msg=document.getElementById('channelToolMsg');
+  if(!secret)return;
+  msg.textContent='Esecuzione...';
+  try{
+    const r=await fetch(path,{
+      method,
+      headers:{'Content-Type':'application/json','x-affareradar-secret':secret}
+    });
+    const d=await r.json();
+    if(!r.ok||!d.ok)throw new Error(d.error||'Errore');
+    msg.textContent='Operazione completata.';
+    await loadData();
+  }catch(err){
+    msg.textContent='Operazione fallita: '+err.message;
+  }
+}
+
 async function dealAction(dealId,action){
   const secret=document.getElementById('secret').value.trim();
   if(!secret)return;
