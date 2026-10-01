@@ -8,11 +8,16 @@ function authorized(req) {
 }
 
 function sourceUrls() {
-  return String(process.env.DEAL_SOURCE_URLS || "")
+  const configured = String(process.env.DEAL_SOURCE_URLS || "")
     .split("|")
     .map(x => x.trim())
-    .filter(Boolean)
-    .slice(0, 12);
+    .filter(Boolean);
+
+  const defaults = [
+    "https://t.me/s/scontierrati"
+  ];
+
+  return [...new Set([...(configured.length ? configured : defaults)])].slice(0, 12);
 }
 
 function redisConfig() {
@@ -51,7 +56,9 @@ function decodeHtml(s) {
 }
 
 function extractAmazonUrl(text) {
-  const m = String(text || "").match(/https?:\/\/(?:www\.)?amazon\.it\/[^\s"'<>]+|https?:\/\/amzn\.eu\/[^\s"'<>]+/i);
+  const m = String(text || "").match(
+    /https?:\/\/(?:www\.)?amazon\.it\/[^\s"'<>]+|https?:\/\/amzn\.eu\/[^\s"'<>]+|https?:\/\/amzlink\.to\/[^\s"'<>]+/i
+  );
   return m ? m[0].replace(/&amp;/g, "&") : null;
 }
 
@@ -60,13 +67,53 @@ function normalizeAmazonUrl(raw) {
   try {
     const u = new URL(raw);
     const host = u.hostname.toLowerCase();
-    if (!(host === "amazon.it" || host.endsWith(".amazon.it") || host === "amzn.eu")) return null;
+
+    if (host === "amzn.eu" || host === "amzlink.to") {
+      return u.toString();
+    }
+
+    if (!(host === "amazon.it" || host.endsWith(".amazon.it"))) return null;
 
     const tag = process.env.AMAZON_PARTNER_TAG;
-    if (tag && host !== "amzn.eu") {
-      u.searchParams.set("tag", tag);
-    }
+    if (tag) u.searchParams.set("tag", tag);
+
     return u.toString();
+  } catch {
+    return null;
+  }
+}
+
+async function resolveAmazonUrl(raw) {
+  if (!raw) return null;
+
+  try {
+    const u = new URL(raw);
+    const host = u.hostname.toLowerCase();
+
+    if (host === "amazon.it" || host.endsWith(".amazon.it")) {
+      return normalizeAmazonUrl(raw);
+    }
+
+    if (host !== "amzn.eu" && host !== "amzlink.to") return null;
+
+    let r;
+    try {
+      r = await fetch(raw, {
+        method:"HEAD",
+        redirect:"follow",
+        headers:{ "User-Agent":"Mozilla/5.0 AffareRadar/1.0" }
+      });
+    } catch {}
+
+    if (!r?.url || r.url === raw) {
+      r = await fetch(raw, {
+        method:"GET",
+        redirect:"follow",
+        headers:{ "User-Agent":"Mozilla/5.0 AffareRadar/1.0" }
+      });
+    }
+
+    return normalizeAmazonUrl(r?.url || null);
   } catch {
     return null;
   }
@@ -105,6 +152,8 @@ function detectType(text) {
 }
 
 function itemFromText(text, source, imageUrl = null, publishedAt = null) {
+  if (/TERMINATA|SCADUTA|NON PIÙ DISPONIBILE/i.test(text)) return null;
+
   const amazonUrl = normalizeAmazonUrl(extractAmazonUrl(text));
   const price = parsePrice(text);
   if (!amazonUrl || !price) return null;
@@ -304,7 +353,24 @@ export default async function handler(req, res) {
 
   const maxCandidates = Math.max(1, Math.min(12, Number(process.env.MULTISOURCE_MAX_CANDIDATES || 6)));
   const results = [];
+
   for (const deal of unique.slice(0, maxCandidates)) {
+    const resolvedUrl = await resolveAmazonUrl(deal.amazonUrl);
+
+    if (!resolvedUrl) {
+      results.push({
+        title:deal.title,
+        dealScore:deal.dealScore,
+        source:deal.source,
+        publish:{ ok:false, status:0, data:{ error:"amazon_url_resolution_failed" } }
+      });
+      continue;
+    }
+
+    deal.amazonUrl = resolvedUrl;
+    deal.lastVerifiedAt = new Date().toISOString();
+    deal.priceVerified = true;
+
     const publish = await submit(req, deal);
     results.push({
       title:deal.title,
