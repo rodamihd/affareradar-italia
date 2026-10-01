@@ -10,7 +10,9 @@ export default async function handler(req, res) {
   }
 
   const token = process.env.TELEGRAM_BOT_TOKEN;
-  const chatId = process.env.TELEGRAM_CHAT_ID;
+  const channelId = process.env.TELEGRAM_CHANNEL_ID || process.env.TELEGRAM_CHANNEL_USERNAME;
+  const fallbackChatId = process.env.TELEGRAM_CHAT_ID;
+  const chatId = channelId || fallbackChatId;
   if (!token || !chatId) {
     return res.status(500).json({ ok:false, error:"telegram_env_missing" });
   }
@@ -117,6 +119,7 @@ export default async function handler(req, res) {
   return res.status(200).json({
     ok:true,
     telegram_message_id:data.result?.message_id,
-    badge:autoBadge
+    badge:autoBadge,
+    target:channelId ? "channel" : "fallback_chat"
   });
 }
