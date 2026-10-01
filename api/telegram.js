@@ -1,4 +1,4 @@
-import { deepLinkUrl, attributionMeta } from "../lib/affiliate-links.js";
+import { deepLinkUrl, attributionMeta, validateAffiliateLink } from "../lib/affiliate-links.js";
 import { buildTrackedRedirect } from "../lib/attribution.js";
 
 export default async function handler(req, res) {
@@ -52,7 +52,16 @@ export default async function handler(req, res) {
     (coupon || stack) ? "coupon_stack" :
     (Number.isFinite(scoreNum) && scoreNum >= 90 ? "top_deal" : "deal");
 
-  const finalAmazonUrl = deepLinkUrl(amazonUrl, "telegram", contentType);
+  const affiliateValidation = validateAffiliateLink(amazonUrl, "telegram", contentType);
+  if (!affiliateValidation.valid) {
+    return res.status(400).json({
+      ok:false,
+      error:"affiliate_link_validation_failed",
+      affiliateValidation
+    });
+  }
+
+  const finalAmazonUrl = deepLinkUrl(affiliateValidation.trackedUrl, "telegram", contentType);
   const attribution = attributionMeta("telegram", contentType);
   const protocol = String(req.headers["x-forwarded-proto"] || "https").split(",")[0].trim();
   const origin = req.headers.host ? `${protocol}://${req.headers.host}` : "";
@@ -130,7 +139,7 @@ export default async function handler(req, res) {
     "",
     "ℹ️ Prezzo, coupon e disponibilità possono cambiare su Amazon.",
     "👍 Utile   🔥 Affare forte   ❌ Non più valido",
-    "🔗 Link affiliato Amazon"
+    "🔗 Link affiliato Amazon — nessun costo aggiuntivo per te"
   ].filter(Boolean);
 
   let caption = lines.join("\n");
@@ -175,6 +184,7 @@ export default async function handler(req, res) {
     telegram_message_id:data.result?.message_id,
     badge:autoBadge,
     target:channelId ? "channel" : "fallback_chat",
-    attribution
+    attribution,
+    affiliateValidation
   });
 }
