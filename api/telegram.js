@@ -55,6 +55,17 @@ export default async function handler(req, res) {
   const shareOfferUrl =
     `https://t.me/share/url?url=${encodeURIComponent(amazonUrl)}&text=${encodeURIComponent(shareOfferText)}`;
 
+  const whatsappShareText = [
+    "🔥 Guarda questa offerta trovata da AffareRadar Italia",
+    title,
+    effectivePrice ? `Prezzo effettivo: ${effectivePrice}` : `Prezzo: ${price}`,
+    discount ? `Sconto: ${discount}` : null,
+    amazonUrl
+  ].filter(Boolean).join("\n");
+
+  const whatsappShareUrl =
+    `https://wa.me/?text=${encodeURIComponent(whatsappShareText)}`;
+
   const inviteUrl = channelUrl
     ? `https://t.me/share/url?url=${encodeURIComponent(channelUrl)}&text=${encodeURIComponent("📡 Unisciti al canale AffareRadar Italia per ricevere le migliori offerte Amazon")}`
     : null;
@@ -85,7 +96,8 @@ export default async function handler(req, res) {
 
   const inlineKeyboard = [
     [{ text:"🛒 Vedi offerta su Amazon", url:amazonUrl }],
-    [{ text:"📤 Invia l'offerta ad un amico", url:shareOfferUrl }]
+    [{ text:"📤 Invia l'offerta ad un amico", url:shareOfferUrl }],
+    [{ text:"🟢 Condividi su WhatsApp", url:whatsappShareUrl }]
   ];
 
   if (inviteUrl) {
