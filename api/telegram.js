@@ -17,15 +17,9 @@ export default async function handler(req, res) {
 
   const body = req.body || {};
   const {
-    title,
-    price,
-    oldPrice,
-    discount,
-    category,
-    reason,
-    amazonUrl,
-    imageUrl,
-    asin
+    title, price, oldPrice, effectivePrice, discount, coupon, category,
+    reason, amazonUrl, imageUrl, asin, dealScore, dealType, prime,
+    historicalLow, stack
   } = body;
 
   if (!title || !price || !amazonUrl) {
@@ -37,50 +31,51 @@ export default async function handler(req, res) {
     .replaceAll("<","&lt;")
     .replaceAll(">","&gt;");
 
+  const scoreNum = Number(dealScore);
+  const autoBadge =
+    historicalLow ? "🏆 MINIMO STORICO" :
+    dealType === "price_error" ? "⚡ PRICE ERROR" :
+    coupon || stack ? "🏷 COUPON STACK" :
+    Number.isFinite(scoreNum) && scoreNum >= 90 ? "🔥 TOP DEAL" :
+    "📡 AFFARERADAR";
+
+  const shortReason = reason ? String(reason).slice(0, 180) : null;
+
   const lines = [
-    category ? `🔥 <b>${esc(category)}</b>` : "🔥 <b>AFFARERADAR</b>",
+    `<b>${autoBadge}</b>`,
+    category ? `📂 ${esc(category)}` : null,
     "",
     `<b>${esc(title)}</b>`,
     "",
     oldPrice ? `💶 <s>${esc(oldPrice)}</s> → <b>${esc(price)}</b>` : `💶 <b>${esc(price)}</b>`,
-    discount ? `📉 <b>${esc(discount)}</b>` : null,
-    reason ? `🎯 ${esc(reason)}` : null,
+    effectivePrice && effectivePrice !== price ? `✅ Prezzo effettivo: <b>${esc(effectivePrice)}</b>` : null,
+    discount ? `📉 Sconto: <b>${esc(discount)}</b>` : null,
+    coupon ? `🏷 Coupon: <b>${esc(coupon)}</b>` : null,
+    stack ? `🧩 Stack promo: ${esc(stack)}` : null,
+    Number.isFinite(scoreNum) ? `🎯 Deal Score: <b>${Math.max(0, Math.min(100, Math.round(scoreNum)))}/100</b>` : null,
+    prime === true ? "⭐ Prime" : null,
+    shortReason ? `💡 ${esc(shortReason)}` : null,
     asin ? `🔎 ASIN: <code>${esc(asin)}</code>` : null,
     "",
-    "ℹ️ Prezzo e disponibilità possono cambiare su Amazon.",
-    "In qualità di Affiliato Amazon ricevo un guadagno dagli acquisti idonei."
+    "ℹ️ Prezzo, coupon e disponibilità possono cambiare su Amazon.",
+    "Affiliato Amazon: ricevo un guadagno dagli acquisti idonei."
   ].filter(Boolean);
 
-  const caption = lines.join("\n");
+  let caption = lines.join("\n");
+  if (caption.length > 1000) caption = caption.slice(0, 997) + "...";
+
   const keyboard = {
-    inline_keyboard: [[
-      { text:"🛒 Apri su Amazon", url:amazonUrl }
-    ]]
+    inline_keyboard: [[{ text:"🛒 Vedi offerta su Amazon", url:amazonUrl }]]
   };
 
   const apiBase = `https://api.telegram.org/bot${token}`;
-  let endpoint;
-  let payload;
+  const endpoint = imageUrl ? `${apiBase}/sendPhoto` : `${apiBase}/sendMessage`;
 
-  if (imageUrl) {
-    endpoint = `${apiBase}/sendPhoto`;
-    payload = {
-      chat_id: chatId,
-      photo: imageUrl,
-      caption,
-      parse_mode:"HTML",
-      reply_markup: keyboard
-    };
-  } else {
-    endpoint = `${apiBase}/sendMessage`;
-    payload = {
-      chat_id: chatId,
-      text: caption,
-      parse_mode:"HTML",
-      disable_web_page_preview:false,
-      reply_markup: keyboard
-    };
-  }
+  const payload = imageUrl ? {
+    chat_id: chatId, photo: imageUrl, caption, parse_mode:"HTML", reply_markup: keyboard
+  } : {
+    chat_id: chatId, text: caption, parse_mode:"HTML", disable_web_page_preview:false, reply_markup: keyboard
+  };
 
   const r = await fetch(endpoint, {
     method:"POST",
@@ -93,5 +88,9 @@ export default async function handler(req, res) {
     return res.status(502).json({ ok:false, telegram:data });
   }
 
-  return res.status(200).json({ ok:true, telegram_message_id:data.result?.message_id });
+  return res.status(200).json({
+    ok:true,
+    telegram_message_id:data.result?.message_id,
+    badge:autoBadge
+  });
 }
