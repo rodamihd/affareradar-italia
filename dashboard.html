@@ -19,6 +19,9 @@
     table{width:100%;border-collapse:collapse;font-size:14px}
     th,td{text-align:left;padding:10px;border-bottom:1px solid #eee;vertical-align:top}
     .ok{color:#087a35}.bad{color:#b42318}.muted{color:#777}
+    .statusrow{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
+    .pill{display:inline-block;padding:7px 10px;border-radius:999px;background:#eef2f7;font-size:13px}
+    .pill.okbg{background:#e9f8ef;color:#087a35}.pill.badbg{background:#fdecec;color:#b42318}
     .hidden{display:none}
     @media(max-width:760px){.grid{grid-template-columns:1fr 1fr}.wrap{padding:14px}}
     @media(max-width:480px){.grid{grid-template-columns:1fr}}
@@ -49,6 +52,11 @@
     <div class="panel">
       <strong>Stato sistema</strong>
       <div id="status" style="margin-top:10px"></div>
+      <div class="statusrow">
+        <span class="pill" id="tgTarget">Telegram: —</span>
+        <span class="pill" id="tgReachable">Canale: —</span>
+        <span class="pill" id="tgPosting">Permessi bot: —</span>
+      </div>
     </div>
 
     <div class="panel">
@@ -85,6 +93,20 @@ async function loadData(){
     document.getElementById('failed').textContent=m.publish_failed||0;
     document.getElementById('status').innerHTML =
       'Redis: <b class="'+(d.redisConfigured?'ok':'bad')+'">'+(d.redisConfigured?'attivo':'non configurato')+'</b>';
+
+    const th=d.telegramHealth||{};
+    const target=document.getElementById('tgTarget');
+    const reachable=document.getElementById('tgReachable');
+    const posting=document.getElementById('tgPosting');
+
+    target.textContent='Telegram: '+(th.targetType==='channel' ? (th.target||'canale') : 'fallback chat');
+    target.className='pill '+(th.targetType==='channel'?'okbg':'badbg');
+
+    reachable.textContent='Canale: '+(th.targetReachable?'raggiungibile':'non raggiungibile');
+    reachable.className='pill '+(th.targetReachable?'okbg':'badbg');
+
+    posting.textContent='Permessi bot: '+(th.botCanPost?'pubblicazione OK':'problema permessi');
+    posting.className='pill '+(th.botCanPost?'okbg':'badbg');
     const tbody=document.getElementById('events');
     tbody.innerHTML='';
     (d.events||[]).forEach(e=>{
