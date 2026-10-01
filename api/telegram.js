@@ -58,7 +58,7 @@ export default async function handler(req, res) {
     asin ? `🔎 ASIN: <code>${esc(asin)}</code>` : null,
     "",
     "ℹ️ Prezzo, coupon e disponibilità possono cambiare su Amazon.",
-    "Affiliato Amazon: ricevo un guadagno dagli acquisti idonei."
+    "🔗 Link affiliato Amazon"
   ].filter(Boolean);
 
   let caption = lines.join("\n");
