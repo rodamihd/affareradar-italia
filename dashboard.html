@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>AffareRadar Control Center</title>
+  <style>
+    body{font-family:Arial,sans-serif;margin:0;background:#f6f7f9;color:#15171a}
+    .wrap{max-width:1100px;margin:0 auto;padding:24px}
+    h1{margin:0 0 6px;font-size:28px}
+    .sub{color:#666;margin-bottom:20px}
+    .auth,.panel{background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:18px;margin-bottom:18px}
+    input{width:100%;box-sizing:border-box;padding:12px;border:1px solid #d1d5db;border-radius:10px;margin:8px 0 12px}
+    button{padding:11px 16px;border:0;border-radius:10px;background:#111827;color:#fff;cursor:pointer}
+    .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+    .card{background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:16px}
+    .num{font-size:28px;font-weight:700}
+    .label{color:#666;font-size:13px}
+    table{width:100%;border-collapse:collapse;font-size:14px}
+    th,td{text-align:left;padding:10px;border-bottom:1px solid #eee;vertical-align:top}
+    .ok{color:#087a35}.bad{color:#b42318}.muted{color:#777}
+    .hidden{display:none}
+    @media(max-width:760px){.grid{grid-template-columns:1fr 1fr}.wrap{padding:14px}}
+    @media(max-width:480px){.grid{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <h1>AffareRadar Control Center</h1>
+  <div class="sub">Monitoraggio privato di Telegram, coda, filtri e lifecycle.</div>
+
+  <div class="auth" id="auth">
+    <strong>Accesso dashboard</strong>
+    <input id="secret" type="password" placeholder="PUBLISH_SECRET">
+    <button onclick="loadData()">Apri dashboard</button>
+    <div id="authmsg" class="muted" style="margin-top:10px"></div>
+  </div>
+
+  <div id="dash" class="hidden">
+    <div class="grid">
+      <div class="card"><div class="num" id="published">0</div><div class="label">Pubblicati</div></div>
+      <div class="card"><div class="num" id="queued">0</div><div class="label">In coda</div></div>
+      <div class="card"><div class="num" id="duplicates">0</div><div class="label">Duplicati bloccati</div></div>
+      <div class="card"><div class="num" id="reval">0</div><div class="label">Revalidation fallite</div></div>
+      <div class="card"><div class="num" id="rejected">0</div><div class="label">Sotto soglia</div></div>
+      <div class="card"><div class="num" id="failed">0</div><div class="label">Errori pubblicazione</div></div>
+    </div>
+
+    <div class="panel">
+      <strong>Stato sistema</strong>
+      <div id="status" style="margin-top:10px"></div>
+    </div>
+
+    <div class="panel">
+      <strong>Eventi recenti</strong>
+      <div style="overflow:auto;margin-top:10px">
+        <table>
+          <thead><tr><th>Quando</th><th>Evento</th><th>Deal</th><th>Categoria</th><th>Score</th></tr></thead>
+          <tbody id="events"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+async function loadData(){
+  const secret=document.getElementById('secret').value.trim();
+  const msg=document.getElementById('authmsg');
+  if(!secret){msg.textContent='Inserisci il secret.';return}
+  msg.textContent='Caricamento...';
+  try{
+    const r=await fetch('/api/dashboard',{headers:{'x-affareradar-secret':secret}});
+    const d=await r.json();
+    if(!r.ok||!d.ok){throw new Error(d.error||'Errore')}
+    localStorage.setItem('affareradar_dashboard_secret',secret);
+    document.getElementById('dash').classList.remove('hidden');
+    msg.textContent='';
+    const m=d.metrics||{};
+    document.getElementById('published').textContent=m.published||0;
+    document.getElementById('queued').textContent=d.queueCount ?? '—';
+    document.getElementById('duplicates').textContent=m.duplicate_blocked||0;
+    document.getElementById('reval').textContent=m.revalidation_failed||0;
+    document.getElementById('rejected').textContent=m.rejected_below_threshold||0;
+    document.getElementById('failed').textContent=m.publish_failed||0;
+    document.getElementById('status').innerHTML =
+      'Redis: <b class="'+(d.redisConfigured?'ok':'bad')+'">'+(d.redisConfigured?'attivo':'non configurato')+'</b>';
+    const tbody=document.getElementById('events');
+    tbody.innerHTML='';
+    (d.events||[]).forEach(e=>{
+      const tr=document.createElement('tr');
+      tr.innerHTML='<td>'+esc(e.at||'')+'</td><td>'+esc(e.event||'')+'</td><td>'+esc(e.title||e.asin||e.dealId||'')+'</td><td>'+esc(e.category||'')+'</td><td>'+esc(e.dealScore??'')+'</td>';
+      tbody.appendChild(tr);
+    });
+  }catch(err){
+    msg.textContent='Accesso/lettura fallita: '+err.message;
+  }
+}
+function esc(v){return String(v).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]))}
+const saved=localStorage.getItem('affareradar_dashboard_secret');
+if(saved){document.getElementById('secret').value=saved}
+</script>
+</body>
+</html>
