@@ -1,30 +1,52 @@
 export default async function handler(req, res) {
   const token = process.env.TELEGRAM_BOT_TOKEN;
-  const chatId = process.env.TELEGRAM_CHAT_ID;
+  const channelTarget = process.env.TELEGRAM_CHANNEL_ID || process.env.TELEGRAM_CHANNEL_USERNAME;
+  const fallbackChatId = process.env.TELEGRAM_CHAT_ID;
+  const target = channelTarget || fallbackChatId;
   const publishSecret = process.env.PUBLISH_SECRET;
 
   const result = {
-    ok: true,
-    service: "AffareRadar Telegram Publisher",
-    telegramConfigured: Boolean(token && chatId),
-    publishSecretConfigured: Boolean(publishSecret),
-    botTokenValid: false,
-    chatReachable: false
+    ok:true,
+    service:"AffareRadar Telegram Publisher",
+    telegramConfigured:Boolean(token && target),
+    publishSecretConfigured:Boolean(publishSecret),
+    targetType:channelTarget ? "channel" : "fallback_chat",
+    target:channelTarget || null,
+    botTokenValid:false,
+    targetReachable:false,
+    botCanPost:false,
+    botMembershipStatus:null
   };
 
-  if (!token || !chatId) {
+  if (!token || !target) {
     return res.status(200).json(result);
   }
 
   try {
-    const [botRes, chatRes] = await Promise.all([
-      fetch(`https://api.telegram.org/bot${token}/getMe`),
-      fetch(`https://api.telegram.org/bot${token}/getChat?chat_id=${encodeURIComponent(chatId)}`)
-    ]);
-
-    const [botData, chatData] = await Promise.all([botRes.json(), chatRes.json()]);
+    const botRes = await fetch(`https://api.telegram.org/bot${token}/getMe`);
+    const botData = await botRes.json();
     result.botTokenValid = Boolean(botRes.ok && botData?.ok);
-    result.chatReachable = Boolean(chatRes.ok && chatData?.ok);
+
+    const chatRes = await fetch(
+      `https://api.telegram.org/bot${token}/getChat?chat_id=${encodeURIComponent(target)}`
+    );
+    const chatData = await chatRes.json();
+    result.targetReachable = Boolean(chatRes.ok && chatData?.ok);
+
+    if (result.botTokenValid && result.targetReachable && botData?.result?.id) {
+      const memberRes = await fetch(
+        `https://api.telegram.org/bot${token}/getChatMember?chat_id=${encodeURIComponent(target)}&user_id=${encodeURIComponent(botData.result.id)}`
+      );
+      const memberData = await memberRes.json();
+
+      if (memberRes.ok && memberData?.ok) {
+        const member = memberData.result || {};
+        result.botMembershipStatus = member.status || null;
+        result.botCanPost =
+          member.status === "creator" ||
+          (member.status === "administrator" && member.can_post_messages !== false);
+      }
+    }
   } catch {
     result.ok = false;
   }
