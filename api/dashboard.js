@@ -83,7 +83,8 @@ export default async function handler(req, res) {
       "publish_failed",
       "attribution_click",
       "rejected_creator_quality",
-      "republish_blocked"
+      "republish_blocked",
+      "reward_validation_failed"
     ];
 
     const metricResults = await Promise.all(
@@ -150,7 +151,7 @@ export default async function handler(req, res) {
       if (lifecycle.length >= 20) break;
     }
 
-    const attributionContentTypes = ["deal","top_deal","price_error","coupon_stack","historical_low"];
+    const attributionContentTypes = ["deal","top_deal","price_error","coupon_stack","historical_low","reward"];
     const attributionActions = ["amazon_click","telegram_share","whatsapp_share","channel_invite"];
     const attribution = {};
 
@@ -180,7 +181,8 @@ export default async function handler(req, res) {
       creatorQualityScore:true,
       affiliateLinkValidator:true,
       timeSlotOptimizer:true,
-      republishIntelligence:true
+      republishIntelligence:true,
+      amazonRewardsEngine:true
     };
 
     return res.status(200).json({
