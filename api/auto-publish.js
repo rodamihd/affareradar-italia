@@ -2,6 +2,7 @@ import { channelPlan } from "../lib/channel-strategy.js";
 import { evaluateStorefrontCandidate, storefrontContent } from "../lib/storefront-intelligence.js";
 import { creatorQualityScore, publishingWindow } from "../lib/creator-quality.js";
 import { evaluateRepublish } from "../lib/republish-intelligence.js";
+import { evaluateAmazonReward, rewardContent } from "../lib/rewards-engine.js";
 import crypto from "node:crypto";
 
 const memory = globalThis.__affareRadarState || {
@@ -399,6 +400,8 @@ export default async function handler(req, res) {
   const dealScore = Number(body.dealScore);
   const reliabilityScore = Number(body.reliabilityScore);
   const dealType = String(body.dealType || "").toLowerCase();
+  const reward = evaluateAmazonReward(body, now);
+  const isReward = reward.isReward;
 
   const minDealScore = Number(process.env.AUTO_PUBLISH_MIN_DEAL_SCORE || 90);
   const minReliability = Number(process.env.AUTO_PUBLISH_MIN_RELIABILITY || 85);
@@ -408,8 +411,21 @@ export default async function handler(req, res) {
   const scorePass = Number.isFinite(dealScore) && dealScore >= minDealScore;
   const specialType = dealType === "price_error" || dealType === "coupon_stack";
   const reliabilityPass = specialType && Number.isFinite(reliabilityScore) && reliabilityScore >= minReliability;
+  const rewardPass = isReward && reward.eligible;
 
-  if (!scorePass && !reliabilityPass) {
+  if (isReward && !reward.eligible) {
+    await trackMetric("reward_validation_failed", body, { reward });
+    return res.status(200).json({
+      ok:true,
+      published:false,
+      decision:"rejected",
+      reason:"reward_validation_failed",
+      lifecycle:"DISCOVERED",
+      reward
+    });
+  }
+
+  if (!scorePass && !reliabilityPass && !rewardPass) {
     await trackMetric("rejected_below_threshold", body);
     return res.status(200).json({
       ok:true,
@@ -422,13 +438,20 @@ export default async function handler(req, res) {
     });
   }
 
-  const revalidation = revalidate(body, now);
+  const revalidation = isReward
+    ? {
+        passed:validateAmazonUrl(body.amazonUrl),
+        mode:"reward",
+        failures:validateAmazonUrl(body.amazonUrl) ? [] : ["invalid_amazon_url"],
+        warnings:[]
+      }
+    : revalidate(body, now);
   const dealId = buildDealId(body);
   const lifecycleStore = await readLifecycle(dealId);
   const creatorQuality = creatorQualityScore(body);
   const window = publishingWindow(new Date(now));
 
-  if (!creatorQuality.passed && dealType !== "price_error") {
+  if (!isReward && !creatorQuality.passed && dealType !== "price_error") {
     await trackMetric("rejected_creator_quality", body, { creatorQuality, window });
     return res.status(200).json({
       ok:true,
@@ -558,8 +581,21 @@ export default async function handler(req, res) {
   const lifecycle = nextLifecycle(lifecycleStore.value, body, now);
   await writeLifecycle(lifecycleStore, dealId, lifecycle);
   const distribution = channelPlan(body);
-  const storefrontDecision = evaluateStorefrontCandidate(body, {});
-  const storefront = storefrontContent(body, storefrontDecision);
+  const storefrontDecision = isReward
+    ? {
+        candidate:reward.storefrontSupported,
+        featured:false,
+        storefrontScore:reward.storefrontSupported ? 85 : 0,
+        collection:"Abbonamenti Amazon",
+        lifecycle:reward.storefrontSupported ? "STOREFRONT_CANDIDATE" : "SKIP",
+        reason:reward.storefrontSupported
+          ? "Programma Amazon supportato nella vetrina secondo il materiale fornito."
+          : "Programma non indicato come supportato nella vetrina dal materiale fornito."
+      }
+    : evaluateStorefrontCandidate(body, {});
+  const storefront = isReward
+    ? { ...rewardContent(body, reward), collection:"Abbonamenti Amazon", productUrl:body.amazonUrl || null }
+    : storefrontContent(body, storefrontDecision);
 
   if (redisConfig() && storefrontDecision.candidate) {
     try {
@@ -581,13 +617,14 @@ export default async function handler(req, res) {
     storefrontDecision,
     creatorQuality,
     publishingWindow:window,
-    republish
+    republish,
+    reward:isReward ? reward : null
   });
 
   return res.status(200).json({
     ok:true,
     published:true,
-    decision:scorePass ? "deal_score_threshold" : "high_reliability_special",
+    decision:rewardPass ? "amazon_reward_verified" : (scorePass ? "deal_score_threshold" : "high_reliability_special"),
     telegram_message_id:publishData.telegram_message_id,
     badge:publishData.badge,
     lifecycle,
@@ -606,6 +643,7 @@ export default async function handler(req, res) {
     storefront:{ decision:storefrontDecision, content:storefront },
     creatorQuality,
     publishingWindow:window,
-    republish
+    republish,
+    reward:isReward ? reward : null
   });
 }
