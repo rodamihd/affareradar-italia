@@ -1,5 +1,7 @@
 import { channelPlan } from "../lib/channel-strategy.js";
 import { evaluateStorefrontCandidate, storefrontContent } from "../lib/storefront-intelligence.js";
+import { creatorQualityScore, publishingWindow } from "../lib/creator-quality.js";
+import { evaluateRepublish } from "../lib/republish-intelligence.js";
 import crypto from "node:crypto";
 
 const memory = globalThis.__affareRadarState || {
@@ -423,6 +425,36 @@ export default async function handler(req, res) {
   const revalidation = revalidate(body, now);
   const dealId = buildDealId(body);
   const lifecycleStore = await readLifecycle(dealId);
+  const creatorQuality = creatorQualityScore(body);
+  const window = publishingWindow(new Date(now));
+
+  if (!creatorQuality.passed && dealType !== "price_error") {
+    await trackMetric("rejected_creator_quality", body, { creatorQuality, window });
+    return res.status(200).json({
+      ok:true,
+      published:false,
+      decision:"rejected",
+      reason:"creator_quality_below_threshold",
+      lifecycle:lifecycleStore.value?.status || "VERIFIED",
+      creatorQuality,
+      publishingWindow:window
+    });
+  }
+
+  const republish = evaluateRepublish(lifecycleStore.value, body, now);
+  if (!republish.allowed) {
+    await trackMetric("republish_blocked", body, { republish, creatorQuality, window });
+    return res.status(200).json({
+      ok:true,
+      published:false,
+      decision:"rejected",
+      reason:"republish_blocked",
+      lifecycle:lifecycleStore.value?.status || "PUBLISHED",
+      republish,
+      creatorQuality,
+      publishingWindow:window
+    });
+  }
 
   if (!revalidation.passed) {
     await trackMetric("revalidation_failed", body, { failures:revalidation.failures });
@@ -546,7 +578,10 @@ export default async function handler(req, res) {
     telegramMessageId:publishData.telegram_message_id,
     lifecycleStatus:lifecycle.status,
     distribution,
-    storefrontDecision
+    storefrontDecision,
+    creatorQuality,
+    publishingWindow:window,
+    republish
   });
 
   return res.status(200).json({
@@ -568,6 +603,9 @@ export default async function handler(req, res) {
     },
     thresholds:{ minDealScore, minReliability },
     distribution,
-    storefront:{ decision:storefrontDecision, content:storefront }
+    storefront:{ decision:storefrontDecision, content:storefront },
+    creatorQuality,
+    publishingWindow:window,
+    republish
   });
 }
