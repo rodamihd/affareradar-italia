@@ -49,6 +49,20 @@ export default async function handler(req, res) {
   } catch {}
 
   if (!cfg) {
+    const storefrontIdsResult = await redisCommand("ZREVRANGE", "affareradar:storefront:candidates", 0, 7, "WITHSCORES");
+    const storefrontPairs = Array.isArray(storefrontIdsResult.result) ? storefrontIdsResult.result : [];
+    const storefrontCandidates = [];
+    for (let i = 0; i < storefrontPairs.length; i += 2) {
+      const dealId = storefrontPairs[i];
+      const score = Number(storefrontPairs[i + 1] || 0);
+      const rr = await redisCommand("GET", `affareradar:storefront:candidate:${dealId}`);
+      if (!rr.result) continue;
+      try {
+        const item = JSON.parse(rr.result);
+        storefrontCandidates.push({ ...item, score });
+      } catch {}
+    }
+
     return res.status(200).json({
       ok:true,
       redisConfigured:false,
@@ -159,7 +173,8 @@ export default async function handler(req, res) {
       affiliateTracking:Boolean(process.env.AMAZON_PARTNER_TAG),
       deepLinkEngine:Boolean(process.env.DEEPLINK_URL_TEMPLATE),
       channelStrategy:true,
-      contentRepurposing:true
+      contentRepurposing:true,
+      storefrontIntelligence:true
     };
 
     return res.status(200).json({
@@ -181,6 +196,7 @@ export default async function handler(req, res) {
         lastCandidateCount:multisourceCandidateCountResult.result ? Number(multisourceCandidateCountResult.result) : null,
         lastSourceCount:multisourceSourceCountResult.result ? Number(multisourceSourceCountResult.result) : null
       },
+      storefrontCandidates,
       events,
       telegramHealth
     });
