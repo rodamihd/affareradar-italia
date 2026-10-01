@@ -1,3 +1,4 @@
+import { channelPlan } from "../lib/channel-strategy.js";
 import crypto from "node:crypto";
 
 const memory = globalThis.__affareRadarState || {
@@ -413,7 +414,8 @@ export default async function handler(req, res) {
       decision:"rejected",
       reason:"below_threshold",
       lifecycle:"DISCOVERED",
-      thresholds:{ minDealScore, minReliability }
+      thresholds:{ minDealScore, minReliability },
+    distribution:channelPlan(body)
     });
   }
 
@@ -522,7 +524,12 @@ export default async function handler(req, res) {
 
   const lifecycle = nextLifecycle(lifecycleStore.value, body, now);
   await writeLifecycle(lifecycleStore, dealId, lifecycle);
-  await trackMetric("published", body, { telegramMessageId:publishData.telegram_message_id, lifecycleStatus:lifecycle.status });
+  const distribution = channelPlan(body);
+  await trackMetric("published", body, {
+    telegramMessageId:publishData.telegram_message_id,
+    lifecycleStatus:lifecycle.status,
+    distribution
+  });
 
   return res.status(200).json({
     ok:true,
