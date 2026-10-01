@@ -1,7 +1,16 @@
 import crypto from "node:crypto";
 
-const recentPublishes = globalThis.__affareRadarRecentPublishes || new Map();
-globalThis.__affareRadarRecentPublishes = recentPublishes;
+const memory = globalThis.__affareRadarState || {
+  published:new Map(),
+  lifecycle:new Map(),
+  recentGlobal:[],
+  recentByCategory:new Map()
+};
+globalThis.__affareRadarState = memory;
+
+function hash(value) {
+  return crypto.createHash("sha256").update(String(value), "utf8").digest("hex");
+}
 
 function buildFingerprint(body) {
   const asin = String(body.asin || "").trim().toUpperCase();
@@ -12,14 +21,13 @@ function buildFingerprint(body) {
   return [asin || String(body.amazonUrl || "").trim(), price, coupon, stack, type].join("|");
 }
 
-function fingerprintKey(fingerprint) {
-  return "affareradar:published:" + crypto.createHash("sha256").update(fingerprint, "utf8").digest("hex");
+function buildDealId(body) {
+  const asin = String(body.asin || "").trim().toUpperCase();
+  return asin || hash(String(body.amazonUrl || body.title || "unknown")).slice(0, 24);
 }
 
-function cleanupOldEntries(now, maxAgeMs) {
-  for (const [key, ts] of recentPublishes.entries()) {
-    if (now - ts > maxAgeMs) recentPublishes.delete(key);
-  }
+function normalizeCategory(value) {
+  return String(value || "other").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "other";
 }
 
 function redisConfig() {
@@ -28,27 +36,272 @@ function redisConfig() {
   return url && token ? { url:url.replace(/\/$/, ""), token } : null;
 }
 
-async function redisGet(key) {
+async function redisCommand(command, ...args) {
   const cfg = redisConfig();
-  if (!cfg) return { configured:false, value:null };
-  const r = await fetch(`${cfg.url}/get/${encodeURIComponent(key)}`, {
-    headers:{ Authorization:`Bearer ${cfg.token}` }
+  if (!cfg) return { configured:false, result:null };
+
+  const r = await fetch(cfg.url, {
+    method:"POST",
+    headers:{
+      Authorization:`Bearer ${cfg.token}`,
+      "Content-Type":"application/json"
+    },
+    body:JSON.stringify([command, ...args])
   });
-  if (!r.ok) throw new Error(`redis_get_${r.status}`);
+
+  if (!r.ok) throw new Error(`redis_${String(command).toLowerCase()}_${r.status}`);
   const data = await r.json();
-  return { configured:true, value:data.result ?? null };
+  return { configured:true, result:data.result ?? null };
 }
 
-async function redisSetNx(key, value, ttlSeconds) {
-  const cfg = redisConfig();
-  if (!cfg) return { configured:false, stored:false };
-  const r = await fetch(
-    `${cfg.url}/set/${encodeURIComponent(key)}/${encodeURIComponent(String(value))}?NX=true&EX=${Math.max(1, Math.floor(ttlSeconds))}`,
-    { headers:{ Authorization:`Bearer ${cfg.token}` } }
-  );
-  if (!r.ok) throw new Error(`redis_set_${r.status}`);
-  const data = await r.json();
-  return { configured:true, stored:data.result === "OK" };
+function nowIso(now = Date.now()) {
+  return new Date(now).toISOString();
+}
+
+function parseTimestamp(value) {
+  if (!value) return null;
+  const ts = Date.parse(value);
+  return Number.isFinite(ts) ? ts : null;
+}
+
+function validateAmazonUrl(value) {
+  try {
+    const u = new URL(value);
+    const host = u.hostname.toLowerCase();
+    return host === "amazon.it" || host.endsWith(".amazon.it") || host === "amzn.eu";
+  } catch {
+    return false;
+  }
+}
+
+function revalidate(body, now) {
+  const mode = String(process.env.REVALIDATION_MODE || "soft").toLowerCase();
+  const maxAgeMinutes = Number(process.env.REVALIDATION_MAX_AGE_MINUTES || 10);
+  const maxAgeMs = Math.max(1, maxAgeMinutes) * 60 * 1000;
+  const verifiedAtRaw = body.lastVerifiedAt || body.verifiedAt || body.verificationTime;
+  const verifiedAt = parseTimestamp(verifiedAtRaw);
+  const warnings = [];
+  const failures = [];
+
+  if (!validateAmazonUrl(body.amazonUrl)) {
+    failures.push("invalid_amazon_url");
+  }
+
+  if (verifiedAt) {
+    const age = now - verifiedAt;
+    if (age < -60 * 1000) failures.push("verification_timestamp_in_future");
+    if (age > maxAgeMs) failures.push("stale_verification");
+  } else if (mode === "strict") {
+    failures.push("missing_verification_timestamp");
+  } else {
+    warnings.push("missing_verification_timestamp");
+  }
+
+  if (body.priceVerified === false) failures.push("price_not_verified");
+  else if (body.priceVerified !== true) {
+    if (mode === "strict") failures.push("missing_price_verification");
+    else warnings.push("missing_price_verification");
+  }
+
+  const hasCoupon = Boolean(body.coupon || body.stack || String(body.dealType || "").toLowerCase() === "coupon_stack");
+  if (hasCoupon) {
+    if (body.couponVerified === false) failures.push("coupon_not_verified");
+    else if (body.couponVerified !== true) {
+      if (mode === "strict") failures.push("missing_coupon_verification");
+      else warnings.push("missing_coupon_verification");
+    }
+  }
+
+  if (body.stock === false || String(body.stock).toLowerCase() === "out_of_stock") {
+    failures.push("out_of_stock");
+  }
+
+  return {
+    passed:failures.length === 0,
+    mode,
+    maxAgeMinutes,
+    verifiedAt:verifiedAt ? new Date(verifiedAt).toISOString() : null,
+    failures,
+    warnings
+  };
+}
+
+function cleanupMemory(now) {
+  const maxAge = 24 * 60 * 60 * 1000;
+  memory.recentGlobal = memory.recentGlobal.filter(ts => now - ts < maxAge);
+  for (const [category, entries] of memory.recentByCategory.entries()) {
+    const clean = entries.filter(ts => now - ts < maxAge);
+    if (clean.length) memory.recentByCategory.set(category, clean);
+    else memory.recentByCategory.delete(category);
+  }
+  for (const [key, value] of memory.published.entries()) {
+    if (now - value > maxAge) memory.published.delete(key);
+  }
+}
+
+async function getAntiSpamState(category, now) {
+  const hourBucket = Math.floor(now / 3600000);
+  const globalKey = `affareradar:rate:global:${hourBucket}`;
+  const categoryKey = `affareradar:rate:category:${category}:${hourBucket}`;
+  const lastKey = "affareradar:rate:last_publish";
+
+  try {
+    const [globalCount, categoryCount, lastPublish] = await Promise.all([
+      redisCommand("GET", globalKey),
+      redisCommand("GET", categoryKey),
+      redisCommand("GET", lastKey)
+    ]);
+
+    if (globalCount.configured) {
+      return {
+        mode:"persistent_upstash_redis",
+        globalKey,
+        categoryKey,
+        lastKey,
+        globalCount:Number(globalCount.result || 0),
+        categoryCount:Number(categoryCount.result || 0),
+        lastPublishAt:Number(lastPublish.result || 0) || null
+      };
+    }
+  } catch {}
+
+  cleanupMemory(now);
+  const hourAgo = now - 3600000;
+  return {
+    mode:"best_effort_in_memory",
+    globalKey:null,
+    categoryKey:null,
+    lastKey:null,
+    globalCount:memory.recentGlobal.filter(ts => ts >= hourAgo).length,
+    categoryCount:(memory.recentByCategory.get(category) || []).filter(ts => ts >= hourAgo).length,
+    lastPublishAt:memory.recentGlobal.length ? memory.recentGlobal[memory.recentGlobal.length - 1] : null
+  };
+}
+
+function evaluateAntiSpam(state, body, now) {
+  const maxPerHour = Number(process.env.ANTISPAM_MAX_PER_HOUR || 8);
+  const maxPerCategoryHour = Number(process.env.ANTISPAM_MAX_PER_CATEGORY_HOUR || 3);
+  const minGapMinutes = Number(process.env.ANTISPAM_MIN_GAP_MINUTES || 5);
+  const minGapMs = Math.max(0, minGapMinutes) * 60 * 1000;
+
+  const dealScore = Number(body.dealScore);
+  const reliability = Number(body.reliabilityScore);
+  const dealType = String(body.dealType || "").toLowerCase();
+  const priority = String(body.priority || "").toLowerCase();
+  const critical =
+    priority === "critical" ||
+    (Number.isFinite(dealScore) && dealScore >= 98) ||
+    (dealType === "price_error" && Number.isFinite(reliability) && reliability >= 95);
+
+  const failures = [];
+
+  if (state.globalCount >= maxPerHour) failures.push("global_hourly_limit");
+  if (!critical && state.categoryCount >= maxPerCategoryHour) failures.push("category_hourly_limit");
+  if (!critical && state.lastPublishAt && now - state.lastPublishAt < minGapMs) failures.push("minimum_gap");
+
+  return {
+    passed:failures.length === 0,
+    critical,
+    failures,
+    limits:{ maxPerHour, maxPerCategoryHour, minGapMinutes },
+    current:{ globalCount:state.globalCount, categoryCount:state.categoryCount }
+  };
+}
+
+async function recordAntiSpam(state, category, now) {
+  if (state.mode === "persistent_upstash_redis") {
+    try {
+      await Promise.all([
+        redisCommand("INCR", state.globalKey),
+        redisCommand("INCR", state.categoryKey),
+        redisCommand("SET", state.lastKey, String(now), "EX", 86400)
+      ]);
+      await Promise.all([
+        redisCommand("EXPIRE", state.globalKey, 7200),
+        redisCommand("EXPIRE", state.categoryKey, 7200)
+      ]);
+      return;
+    } catch {}
+  }
+
+  memory.recentGlobal.push(now);
+  const list = memory.recentByCategory.get(category) || [];
+  list.push(now);
+  memory.recentByCategory.set(category, list);
+}
+
+async function readLifecycle(dealId) {
+  const key = `affareradar:lifecycle:${dealId}`;
+  try {
+    const remote = await redisCommand("GET", key);
+    if (remote.configured && remote.result) {
+      try {
+        return { mode:"persistent_upstash_redis", key, value:JSON.parse(remote.result) };
+      } catch {}
+    }
+    if (remote.configured) return { mode:"persistent_upstash_redis", key, value:null };
+  } catch {}
+
+  return { mode:"best_effort_in_memory", key, value:memory.lifecycle.get(dealId) || null };
+}
+
+async function writeLifecycle(store, dealId, value) {
+  if (store.mode === "persistent_upstash_redis") {
+    try {
+      await redisCommand("SET", store.key, JSON.stringify(value), "EX", 604800);
+      return;
+    } catch {}
+  }
+  memory.lifecycle.set(dealId, value);
+}
+
+function nextLifecycle(previous, body, now) {
+  const effectivePrice = String(body.effectivePrice || body.price || "").trim();
+  const previousPrice = previous?.effectivePrice || null;
+  const state = previous ? (previousPrice && previousPrice !== effectivePrice ? "UPDATED" : "PUBLISHED") : "PUBLISHED";
+
+  return {
+    dealId:buildDealId(body),
+    status:state,
+    firstSeenAt:previous?.firstSeenAt || nowIso(now),
+    lastVerifiedAt:body.lastVerifiedAt || body.verifiedAt || body.verificationTime || nowIso(now),
+    lastPublishedAt:nowIso(now),
+    effectivePrice,
+    dealScore:Number.isFinite(Number(body.dealScore)) ? Number(body.dealScore) : null,
+    reliabilityScore:Number.isFinite(Number(body.reliabilityScore)) ? Number(body.reliabilityScore) : null,
+    category:body.category || null,
+    publishCount:Number(previous?.publishCount || 0) + 1
+  };
+}
+
+async function dedupeCheck(fingerprint, now, cooldownSeconds) {
+  const key = `affareradar:published:${hash(fingerprint)}`;
+
+  try {
+    const remote = await redisCommand("GET", key);
+    if (remote.configured) {
+      if (remote.result) return { duplicate:true, mode:"persistent_upstash_redis", key };
+      const lock = await redisCommand("SET", key, String(now), "NX", "EX", cooldownSeconds);
+      if (lock.result !== "OK") return { duplicate:true, mode:"persistent_upstash_redis", key };
+      return { duplicate:false, mode:"persistent_upstash_redis", key };
+    }
+  } catch {}
+
+  const last = memory.published.get(fingerprint);
+  if (last && now - last < cooldownSeconds * 1000) {
+    return { duplicate:true, mode:"best_effort_in_memory", key:null };
+  }
+
+  memory.published.set(fingerprint, now);
+  return { duplicate:false, mode:"best_effort_in_memory", key:null };
+}
+
+async function rollbackDedupe(dedupe, fingerprint) {
+  if (dedupe.mode === "persistent_upstash_redis" && dedupe.key) {
+    try { await redisCommand("DEL", dedupe.key); } catch {}
+  } else {
+    memory.published.delete(fingerprint);
+  }
 }
 
 export default async function handler(req, res) {
@@ -63,116 +316,136 @@ export default async function handler(req, res) {
   }
 
   const body = req.body || {};
+  const now = Date.now();
+
   const dealScore = Number(body.dealScore);
   const reliabilityScore = Number(body.reliabilityScore);
   const dealType = String(body.dealType || "").toLowerCase();
-  const stock = body.stock;
 
   const minDealScore = Number(process.env.AUTO_PUBLISH_MIN_DEAL_SCORE || 90);
   const minReliability = Number(process.env.AUTO_PUBLISH_MIN_RELIABILITY || 85);
   const cooldownMinutes = Number(process.env.AUTO_PUBLISH_COOLDOWN_MINUTES || 180);
-  const cooldownMs = Math.max(1, cooldownMinutes) * 60 * 1000;
-  const cooldownSeconds = Math.max(60, Math.floor(cooldownMs / 1000));
+  const cooldownSeconds = Math.max(60, Math.floor(Math.max(1, cooldownMinutes) * 60));
 
   const scorePass = Number.isFinite(dealScore) && dealScore >= minDealScore;
   const specialType = dealType === "price_error" || dealType === "coupon_stack";
   const reliabilityPass = specialType && Number.isFinite(reliabilityScore) && reliabilityScore >= minReliability;
 
-  const outOfStock = stock === false || String(stock).toLowerCase() === "out_of_stock";
-  if (outOfStock) {
-    return res.status(200).json({ ok:true, published:false, decision:"rejected", reason:"out_of_stock" });
-  }
-
   if (!scorePass && !reliabilityPass) {
     return res.status(200).json({
-      ok:true, published:false, decision:"rejected", reason:"below_threshold",
-      thresholds:{ minDealScore, minReliability },
-      received:{
-        dealScore:Number.isFinite(dealScore) ? dealScore : null,
-        reliabilityScore:Number.isFinite(reliabilityScore) ? reliabilityScore : null,
-        dealType:dealType || null
-      }
+      ok:true,
+      published:false,
+      decision:"rejected",
+      reason:"below_threshold",
+      lifecycle:"DISCOVERED",
+      thresholds:{ minDealScore, minReliability }
     });
   }
 
-  const now = Date.now();
-  cleanupOldEntries(now, cooldownMs * 2);
+  const revalidation = revalidate(body, now);
+  const dealId = buildDealId(body);
+  const lifecycleStore = await readLifecycle(dealId);
+
+  if (!revalidation.passed) {
+    const expired = {
+      ...(lifecycleStore.value || {}),
+      dealId,
+      status:"EXPIRED",
+      lastCheckedAt:nowIso(now),
+      expiryReason:revalidation.failures
+    };
+    await writeLifecycle(lifecycleStore, dealId, expired);
+
+    return res.status(200).json({
+      ok:true,
+      published:false,
+      decision:"rejected",
+      reason:"revalidation_failed",
+      lifecycle:"EXPIRED",
+      revalidation
+    });
+  }
+
+  const category = normalizeCategory(body.category);
+  const antiSpamState = await getAntiSpamState(category, now);
+  const antiSpam = evaluateAntiSpam(antiSpamState, body, now);
+
+  if (!antiSpam.passed) {
+    return res.status(200).json({
+      ok:true,
+      published:false,
+      decision:"deferred",
+      reason:"anti_spam",
+      lifecycle:lifecycleStore.value?.status || "VERIFIED",
+      antiSpam
+    });
+  }
 
   const fingerprint = buildFingerprint(body);
-  const key = fingerprintKey(fingerprint);
-  let dedupeMode = "best_effort_in_memory";
-  let persistentUnavailableReason = null;
+  const dedupe = await dedupeCheck(fingerprint, now, cooldownSeconds);
 
-  try {
-    const remote = await redisGet(key);
-    if (remote.configured) {
-      dedupeMode = "persistent_upstash_redis";
-      if (remote.value) {
-        return res.status(200).json({
-          ok:true, published:false, decision:"rejected", reason:"duplicate_cooldown",
-          cooldownMinutes, retryAfterSeconds:null, fingerprint, deduplication:{ mode:dedupeMode }
-        });
-      }
-    }
-  } catch (error) {
-    persistentUnavailableReason = String(error?.message || error);
-  }
-
-  const lastPublishedAt = recentPublishes.get(fingerprint);
-  if (lastPublishedAt && now - lastPublishedAt < cooldownMs) {
+  if (dedupe.duplicate) {
     return res.status(200).json({
-      ok:true, published:false, decision:"rejected", reason:"duplicate_cooldown",
-      cooldownMinutes,
-      retryAfterSeconds:Math.ceil((cooldownMs - (now - lastPublishedAt)) / 1000),
-      fingerprint,
-      deduplication:{ mode:dedupeMode, persistentUnavailableReason }
+      ok:true,
+      published:false,
+      decision:"rejected",
+      reason:"duplicate_cooldown",
+      lifecycle:lifecycleStore.value?.status || "VERIFIED",
+      deduplication:{ mode:dedupe.mode, cooldownMinutes }
     });
-  }
-
-  if (dedupeMode === "persistent_upstash_redis") {
-    try {
-      const lock = await redisSetNx(key, now, cooldownSeconds);
-      if (lock.configured && !lock.stored) {
-        return res.status(200).json({
-          ok:true, published:false, decision:"rejected", reason:"duplicate_cooldown",
-          cooldownMinutes, retryAfterSeconds:null, fingerprint, deduplication:{ mode:dedupeMode }
-        });
-      }
-    } catch (error) {
-      dedupeMode = "best_effort_in_memory";
-      persistentUnavailableReason = String(error?.message || error);
-    }
   }
 
   const host = req.headers.host;
-  if (!host) return res.status(500).json({ ok:false, error:"host_missing" });
+  if (!host) {
+    await rollbackDedupe(dedupe, fingerprint);
+    return res.status(500).json({ ok:false, error:"host_missing" });
+  }
 
   const protocol = String(req.headers["x-forwarded-proto"] || "https").split(",")[0].trim();
   const target = `${protocol}://${host}/api/telegram`;
 
   const publishResponse = await fetch(target, {
     method:"POST",
-    headers:{ "Content-Type":"application/json", "x-affareradar-secret":secret },
+    headers:{
+      "Content-Type":"application/json",
+      "x-affareradar-secret":secret
+    },
     body:JSON.stringify(body)
   });
+
   const publishData = await publishResponse.json().catch(() => ({}));
 
   if (!publishResponse.ok || !publishData.ok) {
+    await rollbackDedupe(dedupe, fingerprint);
     return res.status(502).json({
-      ok:false, published:false, error:"telegram_publish_failed", telegram:publishData,
-      deduplication:{ mode:dedupeMode, persistentUnavailableReason }
+      ok:false,
+      published:false,
+      error:"telegram_publish_failed",
+      telegram:publishData
     });
   }
 
-  recentPublishes.set(fingerprint, now);
+  await recordAntiSpam(antiSpamState, category, now);
+
+  const lifecycle = nextLifecycle(lifecycleStore.value, body, now);
+  await writeLifecycle(lifecycleStore, dealId, lifecycle);
 
   return res.status(200).json({
-    ok:true, published:true,
+    ok:true,
+    published:true,
     decision:scorePass ? "deal_score_threshold" : "high_reliability_special",
     telegram_message_id:publishData.telegram_message_id,
     badge:publishData.badge,
+    lifecycle,
+    revalidation,
+    antiSpam:{
+      mode:antiSpamState.mode,
+      critical:antiSpam.critical,
+      limits:antiSpam.limits
+    },
     deduplication:{
-      fingerprint, cooldownMinutes, mode:dedupeMode, persistentUnavailableReason
+      mode:dedupe.mode,
+      cooldownMinutes
     },
     thresholds:{ minDealScore, minReliability }
   });
