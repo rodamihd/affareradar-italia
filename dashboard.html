@@ -49,6 +49,7 @@
       <div class="card"><div class="num" id="reval">0</div><div class="label">Revalidation fallite</div></div>
       <div class="card"><div class="num" id="rejected">0</div><div class="label">Sotto soglia</div></div>
       <div class="card"><div class="num" id="failed">0</div><div class="label">Errori pubblicazione</div></div>
+      <div class="card"><div class="num" id="attributionClicks">0</div><div class="label">Click tracciati</div></div>
     </div>
 
     <div class="panel">
@@ -74,6 +75,17 @@
     <div class="panel">
       <strong>Moduli / Agent</strong>
       <div class="statusrow" id="modules"></div>
+    </div>
+
+    <div class="panel">
+      <strong>Tracking attribution</strong>
+      <div class="muted" style="margin-top:6px">Click e condivisioni interni ad AffareRadar. Nessun dato economico Amazon Associates viene importato.</div>
+      <div style="overflow:auto;margin-top:10px">
+        <table>
+          <thead><tr><th>Tipo contenuto</th><th>Amazon</th><th>Share Telegram</th><th>Share WhatsApp</th><th>Inviti canale</th></tr></thead>
+          <tbody id="attribution"></tbody>
+        </table>
+      </div>
     </div>
 
     <div class="panel">
@@ -128,6 +140,7 @@ async function loadData(){
     document.getElementById('reval').textContent=m.revalidation_failed||0;
     document.getElementById('rejected').textContent=m.rejected_below_threshold||0;
     document.getElementById('failed').textContent=m.publish_failed||0;
+    document.getElementById('attributionClicks').textContent=m.attribution_click||0;
     document.getElementById('status').innerHTML =
       'Redis: <b class="'+(d.redisConfigured?'ok':'bad')+'">'+(d.redisConfigured?'attivo':'non configurato')+'</b>';
 
@@ -152,6 +165,14 @@ async function loadData(){
       s.className='pill '+(ok?'okbg':'badbg');
       s.textContent=name+': '+(ok?'OK':'KO');
       modules.appendChild(s);
+    });
+
+    const abody=document.getElementById('attribution');
+    abody.innerHTML='';
+    Object.entries(d.attribution||{}).forEach(([contentType,a])=>{
+      const tr=document.createElement('tr');
+      tr.innerHTML='<td>'+esc(contentType)+'</td><td>'+esc(a.amazon_click||0)+'</td><td>'+esc(a.telegram_share||0)+'</td><td>'+esc(a.whatsapp_share||0)+'</td><td>'+esc(a.channel_invite||0)+'</td>';
+      abody.appendChild(tr);
     });
 
     const qbody=document.getElementById('queue');
