@@ -1,3 +1,21 @@
+const recentPublishes = globalThis.__affareRadarRecentPublishes || new Map();
+globalThis.__affareRadarRecentPublishes = recentPublishes;
+
+function buildFingerprint(body) {
+  const asin = String(body.asin || "").trim().toUpperCase();
+  const price = String(body.effectivePrice || body.price || "").trim();
+  const coupon = String(body.coupon || "").trim();
+  const stack = String(body.stack || "").trim();
+  const type = String(body.dealType || "").trim().toLowerCase();
+  return [asin || String(body.amazonUrl || "").trim(), price, coupon, stack, type].join("|");
+}
+
+function cleanupOldEntries(now, maxAgeMs) {
+  for (const [key, ts] of recentPublishes.entries()) {
+    if (now - ts > maxAgeMs) recentPublishes.delete(key);
+  }
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ ok:false, error:"method_not_allowed" });
@@ -17,6 +35,8 @@ export default async function handler(req, res) {
 
   const minDealScore = Number(process.env.AUTO_PUBLISH_MIN_DEAL_SCORE || 90);
   const minReliability = Number(process.env.AUTO_PUBLISH_MIN_RELIABILITY || 85);
+  const cooldownMinutes = Number(process.env.AUTO_PUBLISH_COOLDOWN_MINUTES || 180);
+  const cooldownMs = Math.max(1, cooldownMinutes) * 60 * 1000;
 
   const scorePass = Number.isFinite(dealScore) && dealScore >= minDealScore;
   const specialType = dealType === "price_error" || dealType === "coupon_stack";
@@ -54,6 +74,24 @@ export default async function handler(req, res) {
     });
   }
 
+  const now = Date.now();
+  cleanupOldEntries(now, cooldownMs * 2);
+
+  const fingerprint = buildFingerprint(body);
+  const lastPublishedAt = recentPublishes.get(fingerprint);
+
+  if (lastPublishedAt && now - lastPublishedAt < cooldownMs) {
+    return res.status(200).json({
+      ok:true,
+      published:false,
+      decision:"rejected",
+      reason:"duplicate_cooldown",
+      cooldownMinutes,
+      retryAfterSeconds:Math.ceil((cooldownMs - (now - lastPublishedAt)) / 1000),
+      fingerprint
+    });
+  }
+
   const host = req.headers.host;
   if (!host) {
     return res.status(500).json({ ok:false, error:"host_missing" });
@@ -82,12 +120,19 @@ export default async function handler(req, res) {
     });
   }
 
+  recentPublishes.set(fingerprint, now);
+
   return res.status(200).json({
     ok:true,
     published:true,
     decision:scorePass ? "deal_score_threshold" : "high_reliability_special",
     telegram_message_id:publishData.telegram_message_id,
     badge:publishData.badge,
+    deduplication:{
+      fingerprint,
+      cooldownMinutes,
+      mode:"best_effort_in_memory"
+    },
     thresholds:{
       minDealScore,
       minReliability
