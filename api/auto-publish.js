@@ -69,6 +69,12 @@ async function trackMetric(event, body, extra = {}) {
     dealType:body.dealType || null,
     dealScore:Number.isFinite(Number(body.dealScore)) ? Number(body.dealScore) : null,
     reliabilityScore:Number.isFinite(Number(body.reliabilityScore)) ? Number(body.reliabilityScore) : null,
+    price:body.price || null,
+    effectivePrice:body.effectivePrice || body.price || null,
+    discount:body.discount || null,
+    coupon:body.coupon || null,
+    amazonUrl:body.amazonUrl || null,
+    prime:body.prime === true,
     ...extra
   };
 
