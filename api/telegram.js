@@ -1,4 +1,5 @@
 import { deepLinkUrl, attributionMeta } from "../lib/affiliate-links.js";
+import { buildTrackedRedirect } from "../lib/attribution.js";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -53,6 +54,16 @@ export default async function handler(req, res) {
 
   const finalAmazonUrl = deepLinkUrl(amazonUrl, "telegram", contentType);
   const attribution = attributionMeta("telegram", contentType);
+  const protocol = String(req.headers["x-forwarded-proto"] || "https").split(",")[0].trim();
+  const origin = req.headers.host ? `${protocol}://${req.headers.host}` : "";
+  const dealId = asin || String(title).slice(0, 80);
+  const trackedAmazonUrl = buildTrackedRedirect(origin, {
+    destination:finalAmazonUrl,
+    channel:"telegram",
+    contentType,
+    action:"amazon_click",
+    dealId
+  });
 
   const shareOfferText = [
     "🔥 Guarda questa offerta trovata da AffareRadar Italia",
@@ -62,22 +73,44 @@ export default async function handler(req, res) {
   ].filter(Boolean).join("\n");
 
   const shareOfferUrl =
-    `https://t.me/share/url?url=${encodeURIComponent(finalAmazonUrl)}&text=${encodeURIComponent(shareOfferText)}`;
+    `https://t.me/share/url?url=${encodeURIComponent(trackedAmazonUrl)}&text=${encodeURIComponent(shareOfferText)}`;
+  const trackedTelegramShareUrl = buildTrackedRedirect(origin, {
+    destination:shareOfferUrl,
+    channel:"telegram",
+    contentType,
+    action:"telegram_share",
+    dealId
+  });
 
   const whatsappShareText = [
     "🔥 Guarda questa offerta trovata da AffareRadar Italia",
     title,
     effectivePrice ? `Prezzo effettivo: ${effectivePrice}` : `Prezzo: ${price}`,
     discount ? `Sconto: ${discount}` : null,
-    finalAmazonUrl
+    trackedAmazonUrl
   ].filter(Boolean).join("\n");
 
   const whatsappShareUrl =
     `https://wa.me/?text=${encodeURIComponent(whatsappShareText)}`;
+  const trackedWhatsappShareUrl = buildTrackedRedirect(origin, {
+    destination:whatsappShareUrl,
+    channel:"telegram",
+    contentType,
+    action:"whatsapp_share",
+    dealId
+  });
 
   const inviteUrl = channelUrl
     ? `https://t.me/share/url?url=${encodeURIComponent(channelUrl)}&text=${encodeURIComponent("📡 Unisciti al canale AffareRadar Italia per ricevere le migliori offerte Amazon")}`
     : null;
+
+  const trackedInviteUrl = inviteUrl ? buildTrackedRedirect(origin, {
+    destination:inviteUrl,
+    channel:"telegram",
+    contentType,
+    action:"channel_invite",
+    dealId
+  }) : null;
 
   const lines = [
     `<b>${autoBadge}</b>`,
@@ -104,14 +137,14 @@ export default async function handler(req, res) {
   if (caption.length > 1000) caption = caption.slice(0, 997) + "...";
 
   const inlineKeyboard = [
-    [{ text:"🛒 Vedi offerta su Amazon", url:finalAmazonUrl }],
-    [{ text:"📤 Invia l'offerta ad un amico", url:shareOfferUrl }],
-    [{ text:"🟢 Condividi su WhatsApp", url:whatsappShareUrl }]
+    [{ text:"🛒 Vedi offerta su Amazon", url:trackedAmazonUrl }],
+    [{ text:"📤 Invia l'offerta ad un amico", url:trackedTelegramShareUrl }],
+    [{ text:"🟢 Condividi su WhatsApp", url:trackedWhatsappShareUrl }]
   ];
 
-  if (inviteUrl) {
+  if (trackedInviteUrl) {
     inlineKeyboard.push([
-      { text:"👥 Invita nel canale un amico", url:inviteUrl }
+      { text:"👥 Invita nel canale un amico", url:trackedInviteUrl }
     ]);
   }
 
