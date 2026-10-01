@@ -1,5 +1,6 @@
 import { deepLinkUrl, attributionMeta, validateAffiliateLink } from "../lib/affiliate-links.js";
 import { buildTrackedRedirect } from "../lib/attribution.js";
+import { evaluateAmazonReward } from "../lib/rewards-engine.js";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -24,10 +25,14 @@ export default async function handler(req, res) {
   const {
     title, price, oldPrice, effectivePrice, discount, coupon, category,
     reason, amazonUrl, imageUrl, asin, dealScore, dealType, prime,
-    historicalLow, stack, channelUrl: bodyChannelUrl, appUrl
+    historicalLow, stack, channelUrl: bodyChannelUrl, appUrl,
+    rewardProgram, rewardAmountEUR, rewardTermsVerified, rewardValidUntil
   } = body;
 
-  if (!title || !price || !amazonUrl) {
+  const reward = evaluateAmazonReward(body, Date.now());
+  const isReward = reward.isReward;
+
+  if (!title || !amazonUrl || (!isReward && !price)) {
     return res.status(400).json({ ok:false, error:"missing_required_fields" });
   }
 
@@ -38,6 +43,7 @@ export default async function handler(req, res) {
 
   const scoreNum = Number(dealScore);
   const autoBadge =
+    isReward ? "🎁 AMAZON REWARD" :
     historicalLow ? "🏆 MINIMO STORICO" :
     dealType === "price_error" ? "⚡ PRICE ERROR" :
     coupon || stack ? "🏷 COUPON STACK" :
@@ -47,6 +53,7 @@ export default async function handler(req, res) {
   const shortReason = reason ? String(reason).slice(0, 180) : null;
   const channelUrl = bodyChannelUrl || process.env.TELEGRAM_CHANNEL_URL || "";
   const contentType =
+    isReward ? "reward" :
     historicalLow ? "historical_low" :
     dealType === "price_error" ? "price_error" :
     (coupon || stack) ? "coupon_stack" :
@@ -77,8 +84,9 @@ export default async function handler(req, res) {
   const shareOfferText = [
     "🔥 Guarda questa offerta trovata da AffareRadar Italia",
     title,
-    effectivePrice ? `Prezzo effettivo: ${effectivePrice}` : `Prezzo: ${price}`,
-    discount ? `Sconto: ${discount}` : null
+    isReward ? (reward.label || "Programma Amazon") : (effectivePrice ? `Prezzo effettivo: ${effectivePrice}` : `Prezzo: ${price}`),
+    isReward && reward.rewardAmountEUR != null ? `Ricompensa indicata: €${reward.rewardAmountEUR}` : null,
+    !isReward && discount ? `Sconto: ${discount}` : null
   ].filter(Boolean).join("\n");
 
   const shareOfferUrl =
@@ -94,8 +102,9 @@ export default async function handler(req, res) {
   const whatsappShareText = [
     "🔥 Guarda questa offerta trovata da AffareRadar Italia",
     title,
-    effectivePrice ? `Prezzo effettivo: ${effectivePrice}` : `Prezzo: ${price}`,
-    discount ? `Sconto: ${discount}` : null,
+    isReward ? (reward.label || "Programma Amazon") : (effectivePrice ? `Prezzo effettivo: ${effectivePrice}` : `Prezzo: ${price}`),
+    isReward && reward.rewardAmountEUR != null ? `Ricompensa indicata: €${reward.rewardAmountEUR}` : null,
+    !isReward && discount ? `Sconto: ${discount}` : null,
     trackedAmazonUrl
   ].filter(Boolean).join("\n");
 
@@ -127,9 +136,13 @@ export default async function handler(req, res) {
     "",
     `<b>${esc(title)}</b>`,
     "",
-    oldPrice ? `💶 <s>${esc(oldPrice)}</s> → <b>${esc(price)}</b>` : `💶 <b>${esc(price)}</b>`,
-    effectivePrice && effectivePrice !== price ? `✅ Prezzo effettivo: <b>${esc(effectivePrice)}</b>` : null,
-    discount ? `📉 Sconto: <b>${esc(discount)}</b>` : null,
+    !isReward && oldPrice ? `💶 <s>${esc(oldPrice)}</s> → <b>${esc(price)}</b>` : null,
+    !isReward && !oldPrice && price ? `💶 <b>${esc(price)}</b>` : null,
+    !isReward && effectivePrice && effectivePrice !== price ? `✅ Prezzo effettivo: <b>${esc(effectivePrice)}</b>` : null,
+    !isReward && discount ? `📉 Sconto: <b>${esc(discount)}</b>` : null,
+    isReward && reward.label ? `🎯 Programma: <b>${esc(reward.label)}</b>` : null,
+    isReward && reward.rewardAmountEUR != null ? `💰 Ricompensa indicata: <b>€${esc(reward.rewardAmountEUR)}</b>` : null,
+    isReward && reward.validUntil ? `⏳ Valida fino a: ${esc(reward.validUntil)}` : null,
     coupon ? `🏷 Coupon: <b>${esc(coupon)}</b>` : null,
     stack ? `🧩 Stack promo: ${esc(stack)}` : null,
     Number.isFinite(scoreNum) ? `🎯 Deal Score: <b>${Math.max(0, Math.min(100, Math.round(scoreNum)))}/100</b>` : null,
@@ -137,16 +150,16 @@ export default async function handler(req, res) {
     shortReason ? `💡 ${esc(shortReason)}` : null,
     asin ? `🔎 ASIN: <code>${esc(asin)}</code>` : null,
     "",
-    "ℹ️ Prezzo, coupon e disponibilità possono cambiare su Amazon.",
+    isReward ? "ℹ️ Requisiti e ricompense possono cambiare: verifica sempre i termini Amazon aggiornati." : "ℹ️ Prezzo, coupon e disponibilità possono cambiare su Amazon.",
     "👍 Utile   🔥 Affare forte   ❌ Non più valido",
-    "🔗 Link affiliato Amazon — nessun costo aggiuntivo per te"
+    "📢 Pubblicità — Link affiliato Amazon. Per te nessun costo aggiuntivo."
   ].filter(Boolean);
 
   let caption = lines.join("\n");
   if (caption.length > 1000) caption = caption.slice(0, 997) + "...";
 
   const inlineKeyboard = [
-    [{ text:"🛒 Vedi offerta su Amazon", url:trackedAmazonUrl }],
+    [{ text:isReward ? "🎁 Scopri il programma su Amazon" : "🛒 Vedi offerta su Amazon", url:trackedAmazonUrl }],
     [{ text:"📤 Invia l'offerta ad un amico", url:trackedTelegramShareUrl }],
     [{ text:"🟢 Condividi su WhatsApp", url:trackedWhatsappShareUrl }]
   ];
@@ -185,6 +198,7 @@ export default async function handler(req, res) {
     badge:autoBadge,
     target:channelId ? "channel" : "fallback_chat",
     attribution,
-    affiliateValidation
+    affiliateValidation,
+    reward:isReward ? reward : null
   });
 }
