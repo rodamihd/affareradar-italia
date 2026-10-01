@@ -66,7 +66,8 @@ export default async function handler(req, res) {
       "revalidation_failed",
       "duplicate_blocked",
       "rejected_below_threshold",
-      "publish_failed"
+      "publish_failed",
+      "attribution_click"
     ];
 
     const metricResults = await Promise.all(
@@ -131,6 +132,18 @@ export default async function handler(req, res) {
         try { lifecycle.push(JSON.parse(lr.result)); } catch {}
       }
       if (lifecycle.length >= 20) break;
+    }
+
+    const attributionContentTypes = ["deal","top_deal","price_error","coupon_stack","historical_low"];
+    const attributionActions = ["amazon_click","telegram_share","whatsapp_share","channel_invite"];
+    const attribution = {};
+
+    for (const contentType of attributionContentTypes) {
+      attribution[contentType] = {};
+      for (const action of attributionActions) {
+        const rr = await redisCommand("GET", `affareradar:attribution:telegram:${contentType}:${action}`);
+        attribution[contentType][action] = Number(rr.result || 0);
+      }
     }
 
     const modules = {
