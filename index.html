@@ -3,145 +3,187 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AffareRadar Italia</title>
+<title>AffareRadar Italia | Migliori offerte Amazon</title>
+<meta name="description" content="Le migliori offerte Amazon del momento, selezionate per risparmio reale, prezzo storico, coupon e categoria.">
 <style>
-*{box-sizing:border-box} body{margin:0;font-family:Arial,Helvetica,sans-serif;background:#f7f8fa;color:#171717;line-height:1.5}.page{min-height:100vh;padding:72px 7vw;display:flex;flex-direction:column;justify-content:center}.hero{background:linear-gradient(135deg,#111827,#1f2937);color:white}.eyebrow{font-size:14px;letter-spacing:.12em;text-transform:uppercase;font-weight:700;opacity:.8}.hero h1{font-size:64px;line-height:1.02;margin:14px 0 22px}.hero p{font-size:22px;max-width:780px;color:#e5e7eb}.cta{display:inline-block;margin-top:24px;padding:14px 22px;border-radius:12px;background:#f59e0b;color:#111827;font-weight:700;text-decoration:none;width:max-content}.note{margin-top:28px;font-size:14px;color:#d1d5db}.section h2{font-size:42px;margin:0 0 14px}.lead{font-size:20px;max-width:850px;color:#4b5563;margin-bottom:34px}.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:18px}.card{background:white;border:1px solid #e5e7eb;border-radius:18px;padding:22px;box-shadow:0 8px 24px rgba(0,0,0,.05)}.card h3{margin:8px 0 8px;font-size:21px}.card p{margin:0;color:#4b5563}.steps{counter-reset:s}.step:before{counter-increment:s;content:counter(s);display:inline-flex;width:34px;height:34px;border-radius:50%;align-items:center;justify-content:center;background:#111827;color:#fff;font-weight:bold;margin-bottom:10px}.categories .card{min-height:150px}.deal{display:grid;grid-template-columns:1.5fr 1fr;gap:24px}.offer-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}.offer{background:#fff;border:1px solid #e5e7eb;border-radius:18px;padding:20px;box-shadow:0 8px 24px rgba(0,0,0,.05);display:flex;flex-direction:column}.offer-thumb{height:150px;border-radius:14px;background:#f3f4f6;display:flex;align-items:center;justify-content:center;margin-bottom:14px;overflow:hidden}.offer-thumb img{max-width:100%;max-height:100%;object-fit:contain;display:block}.offer h3{font-size:19px;margin:6px 0 10px}.offer .old{color:#6b7280;text-decoration:line-through;font-size:14px}.offer .new{font-size:30px;font-weight:800;margin:2px 0}.offer .save{font-weight:700;color:#065f46}.offer .why{font-size:14px;color:#4b5563;flex:1}.offer .buy{display:block;text-align:center;margin-top:14px;padding:12px 14px;background:#f59e0b;color:#111827;border-radius:10px;text-decoration:none;font-weight:800}.stamp{font-size:13px;color:#6b7280;margin-top:10px}.dealbox{background:white;border-radius:18px;padding:26px;border:1px solid #e5e7eb}.price{font-size:34px;font-weight:800}.muted{color:#6b7280}.pill{display:inline-block;padding:6px 10px;background:#ecfdf5;color:#065f46;border-radius:999px;font-size:13px;font-weight:700}.guides{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}.guide{background:white;border-radius:14px;padding:18px;border-left:5px solid #f59e0b}.guide h3{margin:0 0 6px;font-size:18px}.guide p{margin:0;color:#4b5563}.dark{background:#111827;color:white}.dark .lead,.dark p{color:#d1d5db}.disclosure{background:#fff7ed;border:1px solid #fed7aa;border-radius:16px;padding:20px;color:#7c2d12;font-weight:600}.footer{font-size:14px;color:#9ca3af;margin-top:30px}@media(max-width:900px){.grid{grid-template-columns:repeat(2,1fr)}.deal{grid-template-columns:1fr}.offer-grid{grid-template-columns:repeat(2,1fr)}.hero h1{font-size:46px}}@media(max-width:600px){.grid,.guides,.offer-grid{grid-template-columns:1fr}.page{padding:48px 6vw}.hero h1{font-size:38px}}
+:root{--bg:#f5f7fb;--card:#fff;--text:#111827;--muted:#64748b;--line:#e5e7eb;--dark:#0f172a;--amber:#f59e0b;--green:#047857;--blue:#2563eb}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;font-family:Inter,Arial,Helvetica,sans-serif;background:var(--bg);color:var(--text);line-height:1.5}
+a{color:inherit}.wrap{width:min(1180px,92vw);margin:auto}
+.topbar{position:sticky;top:0;z-index:20;background:rgba(255,255,255,.96);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+.nav{min-height:68px;display:flex;align-items:center;gap:20px;justify-content:space-between}.brand{font-weight:900;font-size:22px;text-decoration:none}.navlinks{display:flex;gap:18px;align-items:center;flex-wrap:wrap}.navlinks a{text-decoration:none;font-size:14px;font-weight:700;color:#334155}
+.hero{background:linear-gradient(135deg,#0f172a,#1e293b);color:#fff;padding:64px 0 54px}.hero-grid{display:grid;grid-template-columns:1.5fr .8fr;gap:34px;align-items:center}.eyebrow{font-size:13px;letter-spacing:.14em;text-transform:uppercase;font-weight:800;color:#fbbf24}.hero h1{font-size:clamp(38px,6vw,68px);line-height:1;margin:12px 0 18px}.hero p{font-size:20px;color:#dbeafe;max-width:760px}.hero-actions{display:flex;gap:12px;flex-wrap:wrap;margin-top:24px}.btn{display:inline-flex;align-items:center;justify-content:center;padding:13px 18px;border-radius:12px;text-decoration:none;font-weight:900;border:0;cursor:pointer}.btn-primary{background:var(--amber);color:#111827}.btn-light{background:#fff;color:#0f172a}.hero-box{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.16);border-radius:20px;padding:22px}.hero-box strong{font-size:38px;display:block}.hero-box span{color:#cbd5e1}
+.section{padding:54px 0}.section-head{display:flex;align-items:end;justify-content:space-between;gap:20px;margin-bottom:22px}.section h2{font-size:34px;margin:0}.section-sub{margin:6px 0 0;color:var(--muted)}.count{font-size:14px;color:var(--muted);font-weight:700}
+.filterbar{display:flex;gap:10px;overflow:auto;padding:0 0 8px;margin-bottom:22px}.filter{white-space:nowrap;border:1px solid var(--line);background:#fff;padding:10px 14px;border-radius:999px;font-weight:800;cursor:pointer}.filter.active{background:var(--dark);color:#fff;border-color:var(--dark)}
+.offer-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}.offer{background:var(--card);border:1px solid var(--line);border-radius:20px;overflow:hidden;box-shadow:0 8px 28px rgba(15,23,42,.05);display:flex;flex-direction:column}.thumb{height:190px;background:#fff;display:flex;align-items:center;justify-content:center;padding:18px;border-bottom:1px solid #f1f5f9}.thumb img{max-width:100%;max-height:100%;object-fit:contain}.offer-body{padding:18px;display:flex;flex-direction:column;flex:1}.badges{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:10px}.badge{font-size:11px;font-weight:900;padding:6px 9px;border-radius:999px;background:#eef2ff;color:#3730a3}.badge.hot{background:#fff7ed;color:#c2410c}.badge.coupon{background:#ecfdf5;color:#047857}.offer h3{font-size:18px;line-height:1.3;margin:0 0 12px}.price-row{display:flex;align-items:end;gap:9px;flex-wrap:wrap}.new{font-size:30px;font-weight:900}.old{color:#94a3b8;text-decoration:line-through}.save{font-size:14px;font-weight:900;color:var(--green);margin:5px 0 10px}.why{color:#475569;font-size:14px;margin:0 0 16px;flex:1}.score-row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-top:1px solid #f1f5f9;font-size:13px}.score{font-weight:900;color:var(--blue)}.buy{margin-top:10px;background:var(--amber);color:#111827;text-decoration:none;text-align:center;padding:12px 14px;border-radius:11px;font-weight:900}.stamp{font-size:11px;color:#94a3b8;margin-top:9px;text-align:center}
+.category-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}.cat{background:#fff;border:1px solid var(--line);border-radius:18px;padding:18px;text-decoration:none;transition:.18s transform,.18s box-shadow}.cat:hover{transform:translateY(-2px);box-shadow:0 8px 25px rgba(15,23,42,.07)}.cat-icon{font-size:28px}.cat h3{font-size:17px;margin:9px 0 4px}.cat p{font-size:13px;color:var(--muted);margin:0}
+.category-section{margin-top:34px}.category-title{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}.category-title h3{font-size:25px;margin:0}.category-title a{font-size:14px;font-weight:900;color:var(--blue);text-decoration:none}
+.info-strip{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}.info{background:#fff;border:1px solid var(--line);border-radius:16px;padding:18px}.info strong{display:block;margin-bottom:5px}.info p{margin:0;color:var(--muted);font-size:14px}
+.disclosure{background:#fff7ed;border:1px solid #fed7aa;border-radius:16px;padding:18px;color:#7c2d12;font-weight:700;margin-top:26px}
+footer{background:#0f172a;color:#cbd5e1;padding:40px 0}.footer-grid{display:flex;justify-content:space-between;gap:24px;flex-wrap:wrap}.footer-grid strong{color:#fff}
+.hidden{display:none!important}
+@media(max-width:900px){.hero-grid{grid-template-columns:1fr}.offer-grid{grid-template-columns:repeat(2,1fr)}.category-grid{grid-template-columns:repeat(2,1fr)}.info-strip{grid-template-columns:1fr}.navlinks{display:none}}
+@media(max-width:620px){.offer-grid,.category-grid{grid-template-columns:1fr}.section{padding:40px 0}.hero{padding:48px 0}.section h2{font-size:28px}.thumb{height:170px}.hero-box{display:none}.section-head{align-items:start;flex-direction:column}}
 </style>
 </head>
 <body>
-<section class="page hero" data-document-role="page" data-label="Home">
-<div class="eyebrow">Radar indipendente di offerte</div>
-<h1>AffareRadar Italia</h1>
-<p>Offerte Amazon selezionate con controllo del prezzo, confronto con lo storico e verifica del contesto promozionale. Meno rumore, più occasioni realmente interessanti.</p>
-<a class="cta" href="#categorie">Scopri le categorie</a>
-<div class="note">I prezzi possono cambiare rapidamente. Verifica sempre prezzo, disponibilità e condizioni direttamente su Amazon prima dell'acquisto.</div>
+<header class="topbar">
+  <div class="wrap nav">
+    <a class="brand" href="#">📡 AffareRadar Italia</a>
+    <nav class="navlinks">
+      <a href="#top">Top offerte</a>
+      <a href="#categorie">Categorie</a>
+      <a href="#come-funziona">Come funziona</a>
+    </nav>
+  </div>
+</header>
+
+<section class="hero">
+  <div class="wrap hero-grid">
+    <div>
+      <div class="eyebrow">Offerte Amazon selezionate</div>
+      <h1>Le occasioni migliori, senza perdere tempo.</h1>
+      <p>AffareRadar mette in evidenza i ribassi più interessanti e li organizza per categoria, con prezzo storico, risparmio reale, coupon e Deal Score.</p>
+      <div class="hero-actions">
+        <a class="btn btn-primary" href="#top">🔥 Vedi le Top Offerte</a>
+        <a class="btn btn-light" href="#categorie">Esplora per categoria</a>
+      </div>
+    </div>
+    <aside class="hero-box">
+      <strong>6 offerte</strong>
+      <span>attualmente in evidenza · aggiornamento 1 ottobre 2026</span>
+    </aside>
+  </div>
 </section>
 
-<section class="page section" data-document-role="page" data-label="Come funziona">
-<h2>Come funziona il radar</h2>
-<p class="lead">AffareRadar non pubblica ogni sconto che incontra. Prima di segnalare un prodotto, valuta identità, prezzo, storico e contesto.</p>
-<div class="grid steps">
-<div class="card step"><h3>Rilevamento</h3><p>Individuiamo ribassi, nuovi minimi, restock e anomalie tra categorie e famiglie prodotto.</p></div>
-<div class="card step"><h3>Verifica</h3><p>Controlliamo variante, seller, condizione, disponibilità, spedizione e link diretto Amazon.</p></div>
-<div class="card step"><h3>Confronto storico</h3><p>Valutiamo il prezzo rispetto a minimo precedente, prezzo tipico e frequenza delle promozioni.</p></div>
-<div class="card step"><h3>Pubblicazione</h3><p>Mostriamo soltanto le opportunità più interessanti, con motivazione chiara e senza promesse sul prezzo.</p></div>
-</div>
+<main>
+<section class="section" id="top">
+  <div class="wrap">
+    <div class="section-head">
+      <div><h2>🔥 Top offerte del momento</h2><p class="section-sub">Le opportunità più forti ordinate per convenienza e profondità dello sconto.</p></div>
+      <div class="count" id="visibleCount">6 offerte</div>
+    </div>
+    <div class="filterbar" aria-label="Filtra offerte">
+      <button class="filter active" data-filter="all">Tutte</button>
+      <button class="filter" data-filter="minimo">Minimo storico</button>
+      <button class="filter" data-filter="coupon">Coupon</button>
+      <button class="filter" data-filter="50">-50% e oltre</button>
+      <button class="filter" data-filter="tech">Tecnologia</button>
+      <button class="filter" data-filter="casa">Casa & Smart Home</button>
+      <button class="filter" data-filter="beauty">Cura personale</button>
+    </div>
+
+    <div class="offer-grid" id="topOffers">
+      <article class="offer" data-tags="minimo beauty 50">
+        <div class="thumb"><img src="https://www.farmasoler.com/media/catalog/product/2/2/222544_oral_b_cepillo_el_ctrico_io2_kids_disney_stitch-.jpg" alt="Oral-B iO Kids Disney Stitch 6+" loading="lazy"></div>
+        <div class="offer-body"><div class="badges"><span class="badge hot">🔥 TOP DEAL</span><span class="badge">MINIMO STORICO</span></div><h3>Oral-B iO Kids Disney Stitch 6+</h3><div class="price-row"><span class="new">36,88 €</span><span class="old">119,99 €</span></div><div class="save">-69% · risparmio 83,11 €</div><p class="why">Ribasso molto profondo e segnalato come minimo storico. Verifica disponibilità e variante al click.</p><div class="score-row"><span>Deal Score</span><span class="score">96/100</span></div><a class="buy" href="https://www.amazon.it/dp/B0HHZJ2NSJ?tag=affareradar-21" target="_blank" rel="nofollow sponsored noopener">Vedi offerta su Amazon</a><div class="stamp">ASIN B0HHZJ2NSJ</div></div>
+      </article>
+
+      <article class="offer" data-tags="minimo tech 50">
+        <div class="thumb"><img src="https://images.samsung.com/is/image/samsung/p6pim/de/mb-mh128t-ww/gallery/de-t9-microsd-card-mb-mh128t-ww-552486246?$1164_776_PNG$" alt="Samsung MicroSD T9 128 GB" loading="lazy"></div>
+        <div class="offer-body"><div class="badges"><span class="badge hot">🔥 TOP DEAL</span><span class="badge">MINIMO STORICO</span></div><h3>Samsung MicroSD T9 128 GB</h3><div class="price-row"><span class="new">44,09 €</span><span class="old">92,99 €</span></div><div class="save">-53% · risparmio 48,90 €</div><p class="why">Nuovo minimo segnalato su una categoria ad alta rotazione.</p><div class="score-row"><span>Deal Score</span><span class="score">93/100</span></div><a class="buy" href="https://www.amazon.it/dp/B0GMRFQDYP?tag=affareradar-21" target="_blank" rel="nofollow sponsored noopener">Vedi offerta su Amazon</a><div class="stamp">ASIN B0GMRFQDYP</div></div>
+      </article>
+
+      <article class="offer" data-tags="tech">
+        <div class="thumb"><img src="https://cdn.shopify.com/s/files/1/0710/2169/1017/files/20240109-154532.png?v=1753071223" alt="Anker MagGo Power Bank 10.000 mAh Qi2" loading="lazy"></div>
+        <div class="offer-body"><div class="badges"><span class="badge">📱 TELEFONIA</span></div><h3>Anker MagGo Power Bank 10.000 mAh Qi2</h3><div class="price-row"><span class="new">52,99 €</span><span class="old">89,99 €</span></div><div class="save">-41% · risparmio 37,00 €</div><p class="why">Forte ribasso per un power bank Qi2 da 15 W.</p><div class="score-row"><span>Deal Score</span><span class="score">88/100</span></div><a class="buy" href="https://www.amazon.it/dp/B0CFDQ9QH5?tag=affareradar-21" target="_blank" rel="nofollow sponsored noopener">Vedi offerta su Amazon</a><div class="stamp">ASIN B0CFDQ9QH5</div></div>
+      </article>
+
+      <article class="offer" data-tags="casa 50">
+        <div class="thumb"><img src="https://gzhls.at/pix/f4/82/f48207d1f82dae45-n.webp" alt="Ring Indoor Camera 2ª generazione" loading="lazy"></div>
+        <div class="offer-body"><div class="badges"><span class="badge">🏠 SMART HOME</span></div><h3>Ring Indoor Camera 2ª gen.</h3><div class="price-row"><span class="new">24,99 €</span><span class="old">49,99 €</span></div><div class="save">-50% · risparmio 25,00 €</div><p class="why">Sconto molto forte su dispositivo Smart Home Amazon.</p><div class="score-row"><span>Deal Score</span><span class="score">87/100</span></div><a class="buy" href="https://www.amazon.it/dp/B0B6GKHS2S?tag=affareradar-21" target="_blank" rel="nofollow sponsored noopener">Vedi offerta su Amazon</a><div class="stamp">ASIN B0B6GKHS2S</div></div>
+      </article>
+
+      <article class="offer" data-tags="minimo beauty 50">
+        <div class="thumb"><img src="https://external.webstorage.gr/mmimages/image/18/49/84/11/1481164-PSALIDI-REMIGTON-hero-560x560.jpg" alt="Remington Keratin Protect 19 mm" loading="lazy"></div>
+        <div class="offer-body"><div class="badges"><span class="badge">✨ BELLEZZA</span><span class="badge">MINIMO STORICO</span></div><h3>Remington Keratin Protect 19 mm</h3><div class="price-row"><span class="new">17,90 €</span><span class="old">45,00 €</span></div><div class="save">-60% · risparmio 27,10 €</div><p class="why">Uno dei ribassi percentuali più forti nella cura capelli.</p><div class="score-row"><span>Deal Score</span><span class="score">91/100</span></div><a class="buy" href="https://www.amazon.it/dp/B073ZFD4M3?tag=affareradar-21" target="_blank" rel="nofollow sponsored noopener">Vedi offerta su Amazon</a><div class="stamp">ASIN B073ZFD4M3</div></div>
+      </article>
+
+      <article class="offer" data-tags="minimo tech">
+        <div class="thumb"><img src="https://cdn.shopify.com/s/files/1/0710/2169/1017/files/A83B6-01EU_f24cd58a-659b-4420-9d9b-b667d265ca8d.png?v=1753071315" alt="Anker Prime Docking Station 14-in-1" loading="lazy"></div>
+        <div class="offer-body"><div class="badges"><span class="badge">💻 TECNOLOGIA</span><span class="badge">MINIMO STORICO</span></div><h3>Anker Prime Docking Station 14-in-1</h3><div class="price-row"><span class="new">239,99 €</span><span class="old">349,99 €</span></div><div class="save">-31% · risparmio 110,00 €</div><p class="why">Risparmio assoluto elevato su accessorio premium.</p><div class="score-row"><span>Deal Score</span><span class="score">86/100</span></div><a class="buy" href="https://www.amazon.it/dp/B0DTK9JSZ2?tag=affareradar-21" target="_blank" rel="nofollow sponsored noopener">Vedi offerta su Amazon</a><div class="stamp">ASIN B0DTK9JSZ2</div></div>
+      </article>
+    </div>
+  </div>
 </section>
 
-<section class="page section categories" id="categorie" data-document-role="page" data-label="Categorie">
-<h2>Offerte per categoria</h2>
-<p class="lead">Ogni categoria ha dinamiche di prezzo diverse. Il radar usa soglie e criteri specifici per evitare confronti fuorvianti.</p>
-<div class="grid">
-<div class="card"><h3>📱 Telefonia & Wearable</h3><p>Smartphone, smartwatch, cuffie e accessori.</p></div>
-<div class="card"><h3>💻 Tecnologia & Informatica</h3><p>Notebook, monitor, SSD, router e periferiche.</p></div>
-<div class="card"><h3>🎮 TV, Audio & Gaming</h3><p>TV, soundbar, console, controller e gaming gear.</p></div>
-<div class="card"><h3>🏠 Casa & Cucina</h3><p>Robot, piccoli elettrodomestici e utensili.</p></div>
-<div class="card"><h3>👟 Abbigliamento & Scarpe</h3><p>Moda uomo, donna, bambino e sport.</p></div>
-<div class="card"><h3>✨ Bellezza & Cura personale</h3><p>Rasoi, phon, piastre, beauty e skincare.</p></div>
-<div class="card"><h3>🏃 Sport & Outdoor</h3><p>Fitness, running, bici e attività all'aperto.</p></div>
-<div class="card"><h3>🛠️ Fai da te & Giardino</h3><p>Utensili, elettroutensili, illuminazione e giardino.</p></div>
-</div>
+<section class="section" id="categorie" style="background:#fff">
+  <div class="wrap">
+    <div class="section-head"><div><h2>🗂️ Migliori offerte per categoria</h2><p class="section-sub">Vai direttamente al settore che ti interessa.</p></div></div>
+    <div class="category-grid">
+      <a class="cat" href="#cat-tech"><div class="cat-icon">💻</div><h3>Tecnologia & Informatica</h3><p>3 offerte attive</p></a>
+      <a class="cat" href="#cat-beauty"><div class="cat-icon">✨</div><h3>Beauty & Cura personale</h3><p>2 offerte attive</p></a>
+      <a class="cat" href="#cat-casa"><div class="cat-icon">🏠</div><h3>Casa & Smart Home</h3><p>1 offerta attiva</p></a>
+      <a class="cat" href="#cat-altre"><div class="cat-icon">➕</div><h3>Altre categorie</h3><p>Gaming, auto, sport, fai da te e altro</p></a>
+    </div>
+
+    <div class="category-section" id="cat-tech">
+      <div class="category-title"><h3>💻 Tecnologia & Informatica</h3><a href="#top" data-jump-filter="tech">Vedi tutte →</a></div>
+      <div class="offer-grid category-copy" data-category="tech"></div>
+    </div>
+    <div class="category-section" id="cat-beauty">
+      <div class="category-title"><h3>✨ Beauty & Cura personale</h3><a href="#top" data-jump-filter="beauty">Vedi tutte →</a></div>
+      <div class="offer-grid category-copy" data-category="beauty"></div>
+    </div>
+    <div class="category-section" id="cat-casa">
+      <div class="category-title"><h3>🏠 Casa & Smart Home</h3><a href="#top" data-jump-filter="casa">Vedi tutte →</a></div>
+      <div class="offer-grid category-copy" data-category="casa"></div>
+    </div>
+    <div class="category-section" id="cat-altre">
+      <div class="category-title"><h3>Altre categorie monitorate</h3></div>
+      <div class="category-grid">
+        <div class="cat"><div class="cat-icon">🎮</div><h3>Gaming</h3><p>In monitoraggio</p></div>
+        <div class="cat"><div class="cat-icon">🔧</div><h3>Fai da te</h3><p>In monitoraggio</p></div>
+        <div class="cat"><div class="cat-icon">🏃</div><h3>Sport</h3><p>In monitoraggio</p></div>
+        <div class="cat"><div class="cat-icon">🚗</div><h3>Auto & Moto</h3><p>In monitoraggio</p></div>
+      </div>
+    </div>
+  </div>
 </section>
 
-<section class="page section" data-document-role="page" data-label="Top offerte" id="offerte">
-<h2>Top offerte attive</h2>
-<p class="lead">Selezione AffareRadar del 1 ottobre 2026. I prezzi possono cambiare rapidamente: il prezzo valido è sempre quello mostrato su Amazon al momento dell'acquisto.</p>
-
-<div class="offer-grid">
-  <article class="offer">
-    <div class="offer-thumb"><img src="https://www.farmasoler.com/media/catalog/product/2/2/222544_oral_b_cepillo_el_ctrico_io2_kids_disney_stitch-.jpg" alt="Oral-B iO Kids Disney Stitch 6+" loading="lazy"></div>
-    <span class="pill">CURA PERSONALE · MINIMO STORICO</span>
-    <h3>Oral-B iO Kids Disney Stitch 6+</h3>
-    <div class="old">119,99 €</div><div class="new">36,88 €</div>
-    <div class="save">-69% · Risparmio 83,11 €</div>
-    <p class="why">Ribasso molto profondo e segnalato come minimo storico. Controllare disponibilità e variante al click.</p>
-    <a class="buy" href="https://www.amazon.it/dp/B0HHZJ2NSJ?tag=affareradar-21" target="_blank" rel="nofollow sponsored noopener">Apri su Amazon</a>
-    <div class="stamp">ASIN B0HHZJ2NSJ · rilevato 01/10/2026</div>
-  </article>
-
-  <article class="offer">
-    <div class="offer-thumb"><img src="https://images.samsung.com/is/image/samsung/p6pim/de/mb-mh128t-ww/gallery/de-t9-microsd-card-mb-mh128t-ww-552486246?$1164_776_PNG$" alt="Samsung MicroSD T9 128 GB" loading="lazy"></div>
-    <span class="pill">TECNOLOGIA · MINIMO STORICO</span>
-    <h3>Samsung MicroSD T9 128 GB</h3>
-    <div class="old">92,99 €</div><div class="new">44,09 €</div>
-    <div class="save">-53% · Risparmio 48,90 €</div>
-    <p class="why">Prezzo segnalato come nuovo minimo storico. Interessante per storage e dispositivi compatibili.</p>
-    <a class="buy" href="https://www.amazon.it/dp/B0GMRFQDYP?tag=affareradar-21" target="_blank" rel="nofollow sponsored noopener">Apri su Amazon</a>
-    <div class="stamp">ASIN B0GMRFQDYP · rilevato 01/10/2026</div>
-  </article>
-
-  <article class="offer">
-    <div class="offer-thumb"><img src="https://cdn.shopify.com/s/files/1/0710/2169/1017/files/20240109-154532.png?v=1753071223" alt="Anker MagGo Power Bank 10.000 mAh Qi2" loading="lazy"></div>
-    <span class="pill">TELEFONIA & ACCESSORI</span>
-    <h3>Anker MagGo Power Bank 10.000 mAh Qi2</h3>
-    <div class="old">89,99 €</div><div class="new">52,99 €</div>
-    <div class="save">-41% · Risparmio 37,00 €</div>
-    <p class="why">Power bank Qi2 da 15 W con forte ribasso rispetto al riferimento del giorno.</p>
-    <a class="buy" href="https://www.amazon.it/dp/B0CFDQ9QH5?tag=affareradar-21" target="_blank" rel="nofollow sponsored noopener">Apri su Amazon</a>
-    <div class="stamp">ASIN B0CFDQ9QH5 · rilevato 01/10/2026</div>
-  </article>
-
-  <article class="offer">
-    <div class="offer-thumb"><img src="https://gzhls.at/pix/f4/82/f48207d1f82dae45-n.webp" alt="Ring Indoor Camera 2ª generazione" loading="lazy"></div>
-    <span class="pill">SMART HOME</span>
-    <h3>Ring Indoor Camera 2ª gen.</h3>
-    <div class="old">49,99 €</div><div class="new">24,99 €</div>
-    <div class="save">-50% · Risparmio 25,00 €</div>
-    <p class="why">Sconto molto forte, ma coerente con le promozioni anticipate sui dispositivi Amazon prima dell'evento Prime.</p>
-    <a class="buy" href="https://www.amazon.it/dp/B0B6GKHS2S?tag=affareradar-21" target="_blank" rel="nofollow sponsored noopener">Apri su Amazon</a>
-    <div class="stamp">ASIN B0B6GKHS2S · rilevato 01/10/2026</div>
-  </article>
-
-  <article class="offer">
-    <div class="offer-thumb"><img src="https://external.webstorage.gr/mmimages/image/18/49/84/11/1481164-PSALIDI-REMIGTON-hero-560x560.jpg" alt="Remington Keratin Protect 19 mm" loading="lazy"></div>
-    <span class="pill">BELLEZZA · MINIMO STORICO</span>
-    <h3>Remington Keratin Protect 19 mm</h3>
-    <div class="old">45,00 €</div><div class="new">17,90 €</div>
-    <div class="save">-60% · Risparmio 27,10 €</div>
-    <p class="why">Uno dei ribassi percentuali più forti della categoria cura capelli rilevati oggi.</p>
-    <a class="buy" href="https://www.amazon.it/dp/B073ZFD4M3?tag=affareradar-21" target="_blank" rel="nofollow sponsored noopener">Apri su Amazon</a>
-    <div class="stamp">ASIN B073ZFD4M3 · rilevato 01/10/2026</div>
-  </article>
-
-  <article class="offer">
-    <div class="offer-thumb"><img src="https://cdn.shopify.com/s/files/1/0710/2169/1017/files/A83B6-01EU_f24cd58a-659b-4420-9d9b-b667d265ca8d.png?v=1753071315" alt="Anker Prime Docking Station 14-in-1" loading="lazy"></div>
-    <span class="pill">TECNOLOGIA · MINIMO STORICO</span>
-    <h3>Anker Prime Docking Station 14-in-1</h3>
-    <div class="old">349,99 €</div><div class="new">239,99 €</div>
-    <div class="save">-31% · Risparmio 110,00 €</div>
-    <p class="why">Sconto percentuale meno estremo, ma risparmio assoluto elevato su un accessorio premium.</p>
-    <a class="buy" href="https://www.amazon.it/dp/B0DTK9JSZ2?tag=affareradar-21" target="_blank" rel="nofollow sponsored noopener">Apri su Amazon</a>
-    <div class="stamp">ASIN B0DTK9JSZ2 · rilevato 01/10/2026</div>
-  </article>
-</div>
-
-<div class="disclosure" style="margin-top:24px">In qualità di Affiliato Amazon io ricevo un guadagno dagli acquisti idonei. Prezzi e disponibilità possono cambiare dopo la pubblicazione.</div>
+<section class="section" id="come-funziona">
+  <div class="wrap">
+    <div class="section-head"><div><h2>Come leggiamo un'offerta</h2><p class="section-sub">Il prezzo barrato da solo non basta.</p></div></div>
+    <div class="info-strip">
+      <div class="info"><strong>📉 Prezzo storico</strong><p>Confrontiamo il prezzo attuale con il comportamento recente del prodotto.</p></div>
+      <div class="info"><strong>🏷️ Coupon & promo</strong><p>Quando disponibili, li consideriamo nel prezzo effettivo e li segnaliamo chiaramente.</p></div>
+      <div class="info"><strong>🎯 Deal Score</strong><p>Riassume profondità dello sconto, qualità dell'offerta e affidabilità del segnale.</p></div>
+    </div>
+    <div class="disclosure">In qualità di Affiliato Amazon io ricevo un guadagno dagli acquisti idonei. Prezzi, coupon, disponibilità e condizioni possono cambiare dopo la pubblicazione.</div>
+  </div>
 </section>
+</main>
 
-<section class="page section" data-document-role="page" data-label="Guide">
-<h2>Guide al risparmio consapevole</h2>
-<p class="lead">Contenuti originali per capire meglio prezzi e promozioni prima di acquistare.</p>
-<div class="guides">
-<div class="guide"><h3>1. Come riconoscere un vero sconto</h3><p>Confronta il prezzo attuale con il prezzo tipico reale, non soltanto con il prezzo di listino barrato.</p></div>
-<div class="guide"><h3>2. Prezzo di listino vs prezzo storico</h3><p>Il listino può essere alto ma poco rappresentativo. Lo storico mostra quanto il prodotto viene venduto davvero nel tempo.</p></div>
-<div class="guide"><h3>3. Quando uno sconto può essere un errore</h3><p>Ribassi improvvisi, fuori scala e senza contesto promozionale meritano una verifica aggiuntiva.</p></div>
-<div class="guide"><h3>4. Come leggere un minimo storico</h3><p>Un nuovo minimo è interessante soprattutto quando la serie storica è ampia e il prodotto non è in liquidazione.</p></div>
-<div class="guide"><h3>5. Eventi Prime e campagne promozionali</h3><p>Durante grandi campagne gli sconti profondi sono più normali: il contesto riduce la probabilità di vero errore prezzo.</p></div>
-<div class="guide"><h3>6. Venduto da Amazon o Marketplace</h3><p>Seller, spedizione e gestione dell'ordine possono cambiare molto l'affidabilità apparente di un'offerta.</p></div>
-<div class="guide"><h3>7. Coupon e sconti cumulabili</h3><p>Il prezzo effettivo può dipendere da coupon o promozioni selezionabili: vanno verificati prima di confrontare due offerte.</p></div>
-<div class="guide"><h3>8. Tecnologia: attenzione alle varianti</h3><p>Memoria, capacità, generazione e bundle devono coincidere. Confrontare varianti diverse crea falsi affari.</p></div>
-<div class="guide"><h3>9. Casa: il risparmio assoluto conta</h3><p>Su prodotti costosi, pochi punti percentuali possono valere decine o centinaia di euro.</p></div>
-<div class="guide"><h3>10. Moda: la stagionalità cambia tutto</h3><p>Sconti elevati sono più frequenti nei cambi stagione; per questo il radar usa soglie diverse rispetto all'elettronica.</p></div>
-<div class="guide"><h3>11. Acquisto consapevole</h3><p>Una buona offerta resta conveniente solo se il prodotto serve davvero. Prezzo basso non significa acquisto necessario.</p></div>
-</div>
-</section>
+<footer>
+  <div class="wrap footer-grid"><div><strong>AffareRadar Italia</strong><br>Offerte Amazon organizzate per convenienza reale.</div><div>Il prezzo valido è sempre quello mostrato su Amazon al momento dell'acquisto.</div></div>
+</footer>
 
-<section class="page section dark" data-document-role="page" data-label="Chi siamo e disclosure">
-<h2>Chi siamo</h2>
-<p class="lead">AffareRadar Italia è un progetto indipendente che analizza offerte Amazon e ne valuta il contesto prezzo. Non siamo Amazon e non vendiamo direttamente prodotti.</p>
-<div class="disclosure">In qualità di Affiliato Amazon io ricevo un guadagno dagli acquisti idonei.</div>
-<p style="margin-top:24px">I prezzi, le disponibilità e le condizioni possono cambiare in qualsiasi momento. Il prezzo valido è sempre quello mostrato su Amazon al momento dell'acquisto.</p>
-<div class="footer">AffareRadar Italia · Offerte verificate · Categorie · Guide · Contatti · Privacy</div>
-</section>
+<script>
+const offers=[...document.querySelectorAll('#topOffers .offer')];
+const filters=[...document.querySelectorAll('.filter')];
+const counter=document.getElementById('visibleCount');
+
+function applyFilter(tag){
+  let visible=0;
+  offers.forEach(card=>{
+    const tags=(card.dataset.tags||'').split(' ');
+    const show=tag==='all'||tags.includes(tag);
+    card.classList.toggle('hidden',!show);
+    if(show) visible++;
+  });
+  counter.textContent=visible+(visible===1?' offerta':' offerte');
+  filters.forEach(b=>b.classList.toggle('active',b.dataset.filter===tag));
+}
+filters.forEach(btn=>btn.addEventListener('click',()=>applyFilter(btn.dataset.filter)));
+
+document.querySelectorAll('.category-copy').forEach(box=>{
+  const tag=box.dataset.category;
+  offers.filter(card=>(card.dataset.tags||'').split(' ').includes(tag)).slice(0,3).forEach(card=>{
+    const clone=card.cloneNode(true);
+    clone.classList.remove('hidden');
+    box.appendChild(clone);
+  });
+});
+document.querySelectorAll('[data-jump-filter]').forEach(link=>link.addEventListener('click',()=>applyFilter(link.dataset.jumpFilter)));
+</script>
 </body>
 </html>
