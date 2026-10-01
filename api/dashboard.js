@@ -37,13 +37,25 @@ export default async function handler(req, res) {
   }
 
   const cfg = redisConfig();
+
+  let telegramHealth = null;
+  try {
+    const host = req.headers.host;
+    if (host) {
+      const protocol = String(req.headers["x-forwarded-proto"] || "https").split(",")[0].trim();
+      const healthRes = await fetch(`${protocol}://${host}/api/health`);
+      telegramHealth = await healthRes.json().catch(() => null);
+    }
+  } catch {}
+
   if (!cfg) {
     return res.status(200).json({
       ok:true,
       redisConfigured:false,
       metrics:{},
       queueCount:null,
-      events:[]
+      events:[],
+      telegramHealth
     });
   }
 
@@ -82,7 +94,8 @@ export default async function handler(req, res) {
       redisConfigured:true,
       metrics,
       queueCount:Number(queueCountResult.result || 0),
-      events
+      events,
+      telegramHealth
     });
   } catch (error) {
     return res.status(502).json({
