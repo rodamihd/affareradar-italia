@@ -76,6 +76,7 @@ export default async function handler(req, res) {
     asin ? `🔎 ASIN: <code>${esc(asin)}</code>` : null,
     "",
     "ℹ️ Prezzo, coupon e disponibilità possono cambiare su Amazon.",
+    "👍 Utile   🔥 Affare forte   ❌ Non più valido",
     "🔗 Link affiliato Amazon"
   ].filter(Boolean);
 
