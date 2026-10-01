@@ -58,6 +58,31 @@ function nowIso(now = Date.now()) {
   return new Date(now).toISOString();
 }
 
+async function trackMetric(event, body, extra = {}) {
+  const payload = {
+    event,
+    at:nowIso(),
+    dealId:buildDealId(body),
+    asin:body.asin || null,
+    title:body.title || null,
+    category:body.category || null,
+    dealType:body.dealType || null,
+    dealScore:Number.isFinite(Number(body.dealScore)) ? Number(body.dealScore) : null,
+    reliabilityScore:Number.isFinite(Number(body.reliabilityScore)) ? Number(body.reliabilityScore) : null,
+    ...extra
+  };
+
+  try {
+    if (redisConfig()) {
+      await Promise.all([
+        redisCommand("INCR", `affareradar:metrics:${event}`),
+        redisCommand("LPUSH", "affareradar:events", JSON.stringify(payload))
+      ]);
+      await redisCommand("LTRIM", "affareradar:events", 0, 199);
+    }
+  } catch {}
+}
+
 function parseTimestamp(value) {
   if (!value) return null;
   const ts = Date.parse(value);
@@ -375,6 +400,7 @@ export default async function handler(req, res) {
   const reliabilityPass = specialType && Number.isFinite(reliabilityScore) && reliabilityScore >= minReliability;
 
   if (!scorePass && !reliabilityPass) {
+    await trackMetric("rejected_below_threshold", body);
     return res.status(200).json({
       ok:true,
       published:false,
@@ -390,6 +416,7 @@ export default async function handler(req, res) {
   const lifecycleStore = await readLifecycle(dealId);
 
   if (!revalidation.passed) {
+    await trackMetric("revalidation_failed", body, { failures:revalidation.failures });
     const expired = {
       ...(lifecycleStore.value || {}),
       dealId,
@@ -416,6 +443,7 @@ export default async function handler(req, res) {
   if (!antiSpam.passed) {
     const dueAt = computeQueueDueAt(antiSpamState, antiSpam, now);
     const queue = await enqueueDeal(body, dealId, dueAt, "anti_spam");
+    await trackMetric("queued", body, { queueReason:antiSpam.failures, scheduledFor:nowIso(dueAt) });
 
     const queuedLifecycle = {
       ...(lifecycleStore.value || {}),
@@ -442,6 +470,7 @@ export default async function handler(req, res) {
   const dedupe = await dedupeCheck(fingerprint, now, cooldownSeconds);
 
   if (dedupe.duplicate) {
+    await trackMetric("duplicate_blocked", body);
     return res.status(200).json({
       ok:true,
       published:false,
@@ -474,6 +503,7 @@ export default async function handler(req, res) {
 
   if (!publishResponse.ok || !publishData.ok) {
     await rollbackDedupe(dedupe, fingerprint);
+    await trackMetric("publish_failed", body);
     return res.status(502).json({
       ok:false,
       published:false,
@@ -486,6 +516,7 @@ export default async function handler(req, res) {
 
   const lifecycle = nextLifecycle(lifecycleStore.value, body, now);
   await writeLifecycle(lifecycleStore, dealId, lifecycle);
+  await trackMetric("published", body, { telegramMessageId:publishData.telegram_message_id, lifecycleStatus:lifecycle.status });
 
   return res.status(200).json({
     ok:true,
