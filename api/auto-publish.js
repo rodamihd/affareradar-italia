@@ -1,4 +1,5 @@
 import { channelPlan } from "../lib/channel-strategy.js";
+import { evaluateStorefrontCandidate, storefrontContent } from "../lib/storefront-intelligence.js";
 import crypto from "node:crypto";
 
 const memory = globalThis.__affareRadarState || {
@@ -525,10 +526,27 @@ export default async function handler(req, res) {
   const lifecycle = nextLifecycle(lifecycleStore.value, body, now);
   await writeLifecycle(lifecycleStore, dealId, lifecycle);
   const distribution = channelPlan(body);
+  const storefrontDecision = evaluateStorefrontCandidate(body, {});
+  const storefront = storefrontContent(body, storefrontDecision);
+
+  if (redisConfig() && storefrontDecision.candidate) {
+    try {
+      await redisCommand(
+        "SET",
+        `affareradar:storefront:candidate:${dealId}`,
+        JSON.stringify({ dealId, body, decision:storefrontDecision, content:storefront, updatedAt:nowIso(now) }),
+        "EX",
+        1209600
+      );
+      await redisCommand("ZADD", "affareradar:storefront:candidates", String(storefrontDecision.storefrontScore), dealId);
+    } catch {}
+  }
+
   await trackMetric("published", body, {
     telegramMessageId:publishData.telegram_message_id,
     lifecycleStatus:lifecycle.status,
-    distribution
+    distribution,
+    storefrontDecision
   });
 
   return res.status(200).json({
@@ -548,6 +566,8 @@ export default async function handler(req, res) {
       mode:dedupe.mode,
       cooldownMinutes
     },
-    thresholds:{ minDealScore, minReliability }
+    thresholds:{ minDealScore, minReliability },
+    distribution,
+    storefront:{ decision:storefrontDecision, content:storefront }
   });
 }
