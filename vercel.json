@@ -4,5 +4,11 @@
     "api/*.js": {
       "maxDuration": 10
     }
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/daily-top5",
+      "schedule": "0 18 * * *"
+    }
+  ]
 }
