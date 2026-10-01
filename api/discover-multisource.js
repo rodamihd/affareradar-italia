@@ -1,0 +1,334 @@
+function authorized(req) {
+  const cronSecret = process.env.CRON_SECRET;
+  const publishSecret = process.env.PUBLISH_SECRET;
+  return Boolean(
+    (cronSecret && req.headers.authorization === `Bearer ${cronSecret}`) ||
+    (publishSecret && req.headers["x-affareradar-secret"] === publishSecret)
+  );
+}
+
+function sourceUrls() {
+  return String(process.env.DEAL_SOURCE_URLS || "")
+    .split("|")
+    .map(x => x.trim())
+    .filter(Boolean)
+    .slice(0, 12);
+}
+
+function redisConfig() {
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  return url && token ? { url:url.replace(/\/$/, ""), token } : null;
+}
+
+async function redisCommand(command, ...args) {
+  const cfg = redisConfig();
+  if (!cfg) return { configured:false, result:null };
+  const r = await fetch(cfg.url, {
+    method:"POST",
+    headers:{
+      Authorization:`Bearer ${cfg.token}`,
+      "Content-Type":"application/json"
+    },
+    body:JSON.stringify([command, ...args])
+  });
+  if (!r.ok) throw new Error(`redis_${String(command).toLowerCase()}_${r.status}`);
+  const data = await r.json();
+  return { configured:true, result:data.result ?? null };
+}
+
+function decodeHtml(s) {
+  return String(s || "")
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/<br\s*\/?\s*>/gi, "\n")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function extractAmazonUrl(text) {
+  const m = String(text || "").match(/https?:\/\/(?:www\.)?amazon\.it\/[^\s"'<>]+|https?:\/\/amzn\.eu\/[^\s"'<>]+/i);
+  return m ? m[0].replace(/&amp;/g, "&") : null;
+}
+
+function normalizeAmazonUrl(raw) {
+  if (!raw) return null;
+  try {
+    const u = new URL(raw);
+    const host = u.hostname.toLowerCase();
+    if (!(host === "amazon.it" || host.endsWith(".amazon.it") || host === "amzn.eu")) return null;
+
+    const tag = process.env.AMAZON_PARTNER_TAG;
+    if (tag && host !== "amzn.eu") {
+      u.searchParams.set("tag", tag);
+    }
+    return u.toString();
+  } catch {
+    return null;
+  }
+}
+
+function parsePrice(text) {
+  const s = String(text || "");
+  const matches = [...s.matchAll(/(?:€\s*([0-9]{1,5}(?:[.,][0-9]{1,2})?)|([0-9]{1,5}(?:[.,][0-9]{1,2})?)\s*€)/g)];
+  if (!matches.length) return null;
+  const raw = matches[0][1] || matches[0][2];
+  return `${raw.replace(".", ",")} €`;
+}
+
+function parseDiscount(text) {
+  const m = String(text || "").match(/(?:-|−)?\s*([1-9][0-9]?)\s*%/);
+  return m ? `-${m[1]}%` : null;
+}
+
+function scoreCandidate(text, discount, coupon, dealType) {
+  let score = 58;
+  const pct = Number(String(discount || "").replace(/[^0-9]/g, ""));
+  if (Number.isFinite(pct) && pct > 0) score += Math.min(34, pct * 1.1);
+  if (coupon) score += 8;
+  const s = String(text || "").toLowerCase();
+  if (/minimo storico|prezzo minimo|lowest price/.test(s)) score += 10;
+  if (dealType === "price_error") score += 16;
+  if (/prime|coupon|codice sconto/.test(s)) score += 4;
+  return Math.max(0, Math.min(100, Math.round(score)));
+}
+
+function detectType(text) {
+  const s = String(text || "").toLowerCase();
+  if (/errore(?: di)? prezzo|price error/.test(s)) return "price_error";
+  if (/coupon|codice sconto|stack/.test(s)) return "coupon_stack";
+  return "deal";
+}
+
+function itemFromText(text, source, imageUrl = null, publishedAt = null) {
+  const amazonUrl = normalizeAmazonUrl(extractAmazonUrl(text));
+  const price = parsePrice(text);
+  if (!amazonUrl || !price) return null;
+
+  const discount = parseDiscount(text);
+  const dealType = detectType(text);
+  const coupon = /coupon|codice sconto|stack/i.test(text) ? "Promo rilevata dalla fonte" : null;
+  const title = decodeHtml(text)
+    .replace(/https?:\/\/\S+/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 180) || "Offerta Amazon";
+
+  return {
+    title,
+    price,
+    effectivePrice:price,
+    discount,
+    coupon,
+    category:"Amazon",
+    reason:`Rilevata automaticamente da ${source}`,
+    amazonUrl,
+    imageUrl,
+    dealScore:scoreCandidate(text, discount, coupon, dealType),
+    reliabilityScore:82,
+    dealType,
+    historicalLow:/minimo storico|prezzo minimo|lowest price/i.test(text),
+    stock:true,
+    lastVerifiedAt:publishedAt || new Date().toISOString(),
+    source,
+    sourceVerified:true
+  };
+}
+
+function parseTelegram(html, source) {
+  const out = [];
+  const re = /<div class="tgme_widget_message[^>]*>([\s\S]*?)<\/div>\s*<\/div>\s*<\/div>/gi;
+  let m;
+  while ((m = re.exec(html)) && out.length < 30) {
+    const block = m[1];
+    const textMatch = block.match(/<div class="tgme_widget_message_text[^>]*>([\s\S]*?)<\/div>/i);
+    if (!textMatch) continue;
+    const text = textMatch[1];
+    const image = block.match(/background-image:url\('([^']+)'\)/i)?.[1] || null;
+    const datetime = block.match(/datetime="([^"]+)"/i)?.[1] || null;
+    const item = itemFromText(text, source, image, datetime);
+    if (item) out.push(item);
+  }
+  return out;
+}
+
+function parseRss(xml, source) {
+  const out = [];
+  const blocks = xml.match(/<(?:item|entry)\b[\s\S]*?<\/(?:item|entry)>/gi) || [];
+  for (const block of blocks.slice(0, 30)) {
+    const title = block.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] || "";
+    const desc = block.match(/<(?:description|summary|content)[^>]*>([\s\S]*?)<\/(?:description|summary|content)>/i)?.[1] || "";
+    const link = block.match(/<link[^>]*href=["']([^"']+)["']/i)?.[1] ||
+      block.match(/<link[^>]*>([\s\S]*?)<\/link>/i)?.[1] || "";
+    const date = block.match(/<(?:pubDate|updated|published)[^>]*>([\s\S]*?)<\/(?:pubDate|updated|published)>/i)?.[1] || null;
+    const text = `${title} ${desc} ${link}`;
+    const item = itemFromText(text, source, null, date);
+    if (item) out.push(item);
+  }
+  return out;
+}
+
+function parseJson(data, source) {
+  const rows = Array.isArray(data) ? data :
+    Array.isArray(data?.items) ? data.items :
+    Array.isArray(data?.deals) ? data.deals :
+    Array.isArray(data?.results) ? data.results : [];
+
+  const out = [];
+  for (const row of rows.slice(0, 50)) {
+    const rawText = [
+      row.title, row.name, row.description, row.text,
+      row.amazonUrl, row.url, row.link,
+      row.price, row.oldPrice, row.discount, row.coupon
+    ].filter(Boolean).join(" ");
+
+    const amazonUrl = normalizeAmazonUrl(row.amazonUrl || extractAmazonUrl(rawText));
+    const price = row.price ? String(row.price) : parsePrice(rawText);
+    if (!amazonUrl || !price) continue;
+
+    const discount = row.discount ? String(row.discount) : parseDiscount(rawText);
+    const dealType = row.dealType || detectType(rawText);
+    const coupon = row.coupon || (/coupon|codice sconto|stack/i.test(rawText) ? "Promo rilevata dalla fonte" : null);
+
+    out.push({
+      title:String(row.title || row.name || "Offerta Amazon").slice(0, 180),
+      price,
+      oldPrice:row.oldPrice || null,
+      effectivePrice:row.effectivePrice || price,
+      discount,
+      coupon,
+      category:row.category || "Amazon",
+      reason:row.reason || `Rilevata automaticamente da ${source}`,
+      amazonUrl,
+      imageUrl:row.imageUrl || row.image || null,
+      asin:row.asin || null,
+      dealScore:Number.isFinite(Number(row.dealScore)) ? Number(row.dealScore) : scoreCandidate(rawText, discount, coupon, dealType),
+      reliabilityScore:Number.isFinite(Number(row.reliabilityScore)) ? Number(row.reliabilityScore) : 88,
+      dealType,
+      prime:row.prime === true,
+      historicalLow:row.historicalLow === true || /minimo storico|prezzo minimo|lowest price/i.test(rawText),
+      stock:row.stock === false ? false : true,
+      lastVerifiedAt:row.lastVerifiedAt || row.publishedAt || new Date().toISOString(),
+      source,
+      sourceVerified:true
+    });
+  }
+  return out;
+}
+
+async function fetchSource(url) {
+  const r = await fetch(url, {
+    headers:{
+      "User-Agent":"AffareRadar/1.0 (+https://affareradar-italia.vercel.app)"
+    },
+    redirect:"follow"
+  });
+  if (!r.ok) throw new Error(`source_http_${r.status}`);
+
+  const type = String(r.headers.get("content-type") || "").toLowerCase();
+  const text = await r.text();
+  const source = new URL(url).hostname;
+
+  if (type.includes("application/json") || /^[\s\n]*[\[{]/.test(text)) {
+    const data = JSON.parse(text);
+    return parseJson(data, source);
+  }
+  if (url.includes("t.me/") || /tgme_widget_message/.test(text)) {
+    return parseTelegram(text, source);
+  }
+  return parseRss(text, source);
+}
+
+async function submit(req, deal) {
+  const host = req.headers.host;
+  if (!host) throw new Error("host_missing");
+  const secret = process.env.PUBLISH_SECRET;
+  if (!secret) throw new Error("publish_secret_missing");
+  const protocol = String(req.headers["x-forwarded-proto"] || "https").split(",")[0].trim();
+
+  const r = await fetch(`${protocol}://${host}/api/auto-publish`, {
+    method:"POST",
+    headers:{
+      "Content-Type":"application/json",
+      "x-affareradar-secret":secret
+    },
+    body:JSON.stringify(deal)
+  });
+  const data = await r.json().catch(() => ({}));
+  return { ok:r.ok, status:r.status, data };
+}
+
+export default async function handler(req, res) {
+  if (req.method !== "GET" && req.method !== "POST") {
+    return res.status(405).json({ ok:false, error:"method_not_allowed" });
+  }
+  if (!authorized(req)) {
+    return res.status(401).json({ ok:false, error:"unauthorized" });
+  }
+
+  const sources = sourceUrls();
+  if (!sources.length) {
+    return res.status(503).json({
+      ok:false,
+      error:"deal_sources_not_configured",
+      required:["DEAL_SOURCE_URLS"],
+      example:"https://example.com/feed.xml|https://t.me/s/examplechannel"
+    });
+  }
+
+  const sourceResults = [];
+  const candidates = [];
+
+  for (const url of sources) {
+    try {
+      const items = await fetchSource(url);
+      sourceResults.push({ url, ok:true, found:items.length });
+      candidates.push(...items);
+    } catch (error) {
+      sourceResults.push({ url, ok:false, error:String(error?.message || error) });
+    }
+  }
+
+  const unique = [];
+  const seen = new Set();
+  for (const deal of candidates.sort((a,b) => Number(b.dealScore || 0) - Number(a.dealScore || 0))) {
+    const key = deal.asin || deal.amazonUrl;
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    unique.push(deal);
+  }
+
+  const maxCandidates = Math.max(1, Math.min(12, Number(process.env.MULTISOURCE_MAX_CANDIDATES || 6)));
+  const results = [];
+  for (const deal of unique.slice(0, maxCandidates)) {
+    const publish = await submit(req, deal);
+    results.push({
+      title:deal.title,
+      dealScore:deal.dealScore,
+      source:deal.source,
+      publish
+    });
+  }
+
+  try {
+    if (redisConfig()) {
+      await Promise.all([
+        redisCommand("SET", "affareradar:multisource:last_run_at", new Date().toISOString(), "EX", 172800),
+        redisCommand("SET", "affareradar:multisource:last_candidate_count", String(unique.length), "EX", 172800),
+        redisCommand("SET", "affareradar:multisource:last_source_count", String(sources.length), "EX", 172800)
+      ]);
+    }
+  } catch {}
+
+  return res.status(200).json({
+    ok:true,
+    sources:sourceResults,
+    candidates:unique.length,
+    submitted:results.length,
+    results
+  });
+}
