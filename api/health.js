@@ -4,12 +4,16 @@ export default async function handler(req, res) {
   const fallbackChatId = process.env.TELEGRAM_CHAT_ID;
   const target = channelTarget || fallbackChatId;
   const publishSecret = process.env.PUBLISH_SECRET;
+  const amazonPartnerTag = process.env.AMAZON_PARTNER_TAG;
+  const expectedAmazonPartnerTag = "affareradar-21";
 
   const result = {
     ok:true,
     service:"AffareRadar Telegram Publisher",
     telegramConfigured:Boolean(token && target),
     publishSecretConfigured:Boolean(publishSecret),
+    amazonPartnerTagConfigured:Boolean(amazonPartnerTag),
+    amazonPartnerTagMatchesExpected:amazonPartnerTag === expectedAmazonPartnerTag,
     targetType:channelTarget ? "channel" : "fallback_chat",
     target:channelTarget || null,
     botTokenValid:false,
