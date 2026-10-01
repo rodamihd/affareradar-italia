@@ -81,7 +81,9 @@ export default async function handler(req, res) {
       "duplicate_blocked",
       "rejected_below_threshold",
       "publish_failed",
-      "attribution_click"
+      "attribution_click",
+      "rejected_creator_quality",
+      "republish_blocked"
     ];
 
     const metricResults = await Promise.all(
@@ -174,7 +176,11 @@ export default async function handler(req, res) {
       deepLinkEngine:Boolean(process.env.DEEPLINK_URL_TEMPLATE),
       channelStrategy:true,
       contentRepurposing:true,
-      storefrontIntelligence:true
+      storefrontIntelligence:true,
+      creatorQualityScore:true,
+      affiliateLinkValidator:true,
+      timeSlotOptimizer:true,
+      republishIntelligence:true
     };
 
     return res.status(200).json({
