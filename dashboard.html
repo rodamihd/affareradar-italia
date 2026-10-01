@@ -22,6 +22,8 @@
     .statusrow{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
     .pill{display:inline-block;padding:7px 10px;border-radius:999px;background:#eef2f7;font-size:13px}
     .pill.okbg{background:#e9f8ef;color:#087a35}.pill.badbg{background:#fdecec;color:#b42318}
+    .actions{display:flex;gap:6px;flex-wrap:wrap}.actions button{padding:7px 9px;font-size:12px}
+    .danger{background:#b42318}.secondary{background:#4b5563}
     .hidden{display:none}
     @media(max-width:760px){.grid{grid-template-columns:1fr 1fr}.wrap{padding:14px}}
     @media(max-width:480px){.grid{grid-template-columns:1fr}}
@@ -56,6 +58,31 @@
         <span class="pill" id="tgTarget">Telegram: —</span>
         <span class="pill" id="tgReachable">Canale: —</span>
         <span class="pill" id="tgPosting">Permessi bot: —</span>
+      </div>
+    </div>
+
+    <div class="panel">
+      <strong>Moduli / Agent</strong>
+      <div class="statusrow" id="modules"></div>
+    </div>
+
+    <div class="panel">
+      <strong>Deal in coda</strong>
+      <div style="overflow:auto;margin-top:10px">
+        <table>
+          <thead><tr><th>Deal</th><th>Quando</th><th>Motivo</th><th>Score</th><th>Azioni</th></tr></thead>
+          <tbody id="queue"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="panel">
+      <strong>Lifecycle recente</strong>
+      <div style="overflow:auto;margin-top:10px">
+        <table>
+          <thead><tr><th>Deal ID</th><th>Stato</th><th>Prezzo</th><th>Pubblicazioni</th><th>Ultimo aggiornamento</th></tr></thead>
+          <tbody id="lifecycle"></tbody>
+        </table>
       </div>
     </div>
 
@@ -107,6 +134,33 @@ async function loadData(){
 
     posting.textContent='Permessi bot: '+(th.botCanPost?'pubblicazione OK':'problema permessi');
     posting.className='pill '+(th.botCanPost?'okbg':'badbg');
+
+    const modules=document.getElementById('modules');
+    modules.innerHTML='';
+    Object.entries(d.modules||{}).forEach(([name,ok])=>{
+      const s=document.createElement('span');
+      s.className='pill '+(ok?'okbg':'badbg');
+      s.textContent=name+': '+(ok?'OK':'KO');
+      modules.appendChild(s);
+    });
+
+    const qbody=document.getElementById('queue');
+    qbody.innerHTML='';
+    (d.queue||[]).forEach(q=>{
+      const b=q.body||{};
+      const tr=document.createElement('tr');
+      tr.innerHTML='<td>'+esc(b.title||q.dealId||'')+'</td><td>'+esc(q.scheduledFor||'')+'</td><td>'+esc(q.reason||'')+'</td><td>'+esc(b.dealScore??'')+'</td><td><div class="actions"><button onclick="dealAction(\''+escAttr(q.dealId)+'\',\'retry\')">Riprova</button><button class="secondary" onclick="dealAction(\''+escAttr(q.dealId)+'\',\'publish_now\')">Pubblica ora</button><button class="danger" onclick="dealAction(\''+escAttr(q.dealId)+'\',\'discard\')">Scarta</button></div></td>';
+      qbody.appendChild(tr);
+    });
+
+    const lbody=document.getElementById('lifecycle');
+    lbody.innerHTML='';
+    (d.lifecycle||[]).forEach(l=>{
+      const tr=document.createElement('tr');
+      tr.innerHTML='<td>'+esc(l.dealId||'')+'</td><td>'+esc(l.status||'')+'</td><td>'+esc(l.effectivePrice||'')+'</td><td>'+esc(l.publishCount??'')+'</td><td>'+esc(l.lastPublishedAt||l.lastCheckedAt||l.queuedAt||'')+'</td>';
+      lbody.appendChild(tr);
+    });
+
     const tbody=document.getElementById('events');
     tbody.innerHTML='';
     (d.events||[]).forEach(e=>{
@@ -118,7 +172,24 @@ async function loadData(){
     msg.textContent='Accesso/lettura fallita: '+err.message;
   }
 }
+async function dealAction(dealId,action){
+  const secret=document.getElementById('secret').value.trim();
+  if(!secret)return;
+  if(action==='discard'&&!confirm('Scartare questo deal?'))return;
+  if(action==='publish_now'&&!confirm('Pubblicare subito questo deal bypassando la coda?'))return;
+  try{
+    const r=await fetch('/api/deal-action',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','x-affareradar-secret':secret},
+      body:JSON.stringify({dealId,action})
+    });
+    const d=await r.json();
+    if(!r.ok||!d.ok)throw new Error(d.error||'Errore');
+    await loadData();
+  }catch(err){alert('Azione fallita: '+err.message)}
+}
 function esc(v){return String(v).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]))}
+function escAttr(v){return String(v).replace(/\\/g,'\\\\').replace(/'/g,"\\'")}
 const saved=localStorage.getItem('affareradar_dashboard_secret');
 if(saved){document.getElementById('secret').value=saved}
 </script>
