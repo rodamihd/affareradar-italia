@@ -85,7 +85,6 @@ export default async function handler(req, res) {
 
   const inlineKeyboard = [
     [{ text:"🛒 Vedi offerta su Amazon", url:amazonUrl }],
-    [{ text:"📱 Apri offerta nell'App Amazon", url:amazonAppUrl }],
     [{ text:"📤 Invia l'offerta ad un amico", url:shareOfferUrl }]
   ];
 
