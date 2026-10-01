@@ -78,12 +78,24 @@ export default async function handler(req, res) {
       metrics[name] = Number(metricResults[i].result || 0);
     });
 
-    const [queueCountResult, eventsResult, queueIdsResult, lastDiscoveryAtResult, lastDiscoveryCountResult] = await Promise.all([
+    const [
+      queueCountResult,
+      eventsResult,
+      queueIdsResult,
+      lastDiscoveryAtResult,
+      lastDiscoveryCountResult,
+      multisourceLastRunResult,
+      multisourceCandidateCountResult,
+      multisourceSourceCountResult
+    ] = await Promise.all([
       redisCommand("ZCARD", "affareradar:queue"),
       redisCommand("LRANGE", "affareradar:events", 0, 49),
       redisCommand("ZRANGE", "affareradar:queue", 0, 19, "WITHSCORES"),
       redisCommand("GET", "affareradar:amazon:last_discovery_at"),
-      redisCommand("GET", "affareradar:amazon:last_discovery_count")
+      redisCommand("GET", "affareradar:amazon:last_discovery_count"),
+      redisCommand("GET", "affareradar:multisource:last_run_at"),
+      redisCommand("GET", "affareradar:multisource:last_candidate_count"),
+      redisCommand("GET", "affareradar:multisource:last_source_count")
     ]);
 
     const events = Array.isArray(eventsResult.result)
@@ -129,7 +141,8 @@ export default async function handler(req, res) {
       deduplication:true,
       antiSpam:true,
       lifecycle:true,
-      amazonDiscovery:Boolean(process.env.AMAZON_CREATORS_CREDENTIAL_ID && process.env.AMAZON_CREATORS_CREDENTIAL_SECRET && process.env.AMAZON_PARTNER_TAG)
+      amazonDiscovery:Boolean(process.env.AMAZON_CREATORS_CREDENTIAL_ID && process.env.AMAZON_CREATORS_CREDENTIAL_SECRET && process.env.AMAZON_PARTNER_TAG),
+      multiSourceDiscovery:true
     };
 
     return res.status(200).json({
@@ -144,6 +157,12 @@ export default async function handler(req, res) {
         configured:modules.amazonDiscovery,
         lastRunAt:lastDiscoveryAtResult.result || null,
         lastCandidateCount:lastDiscoveryCountResult.result ? Number(lastDiscoveryCountResult.result) : null
+      },
+      multiSourceDiscovery:{
+        configured:true,
+        lastRunAt:multisourceLastRunResult.result || null,
+        lastCandidateCount:multisourceCandidateCountResult.result ? Number(multisourceCandidateCountResult.result) : null,
+        lastSourceCount:multisourceSourceCountResult.result ? Number(multisourceSourceCountResult.result) : null
       },
       events,
       telegramHealth
