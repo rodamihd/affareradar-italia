@@ -19,7 +19,7 @@ export default async function handler(req, res) {
   const {
     title, price, oldPrice, effectivePrice, discount, coupon, category,
     reason, amazonUrl, imageUrl, asin, dealScore, dealType, prime,
-    historicalLow, stack
+    historicalLow, stack, channelUrl: bodyChannelUrl, appUrl
   } = body;
 
   if (!title || !price || !amazonUrl) {
@@ -40,6 +40,22 @@ export default async function handler(req, res) {
     "📡 AFFARERADAR";
 
   const shortReason = reason ? String(reason).slice(0, 180) : null;
+  const channelUrl = bodyChannelUrl || process.env.TELEGRAM_CHANNEL_URL || "";
+  const amazonAppUrl = appUrl || amazonUrl;
+
+  const shareOfferText = [
+    "🔥 Guarda questa offerta trovata da AffareRadar Italia",
+    title,
+    effectivePrice ? `Prezzo effettivo: ${effectivePrice}` : `Prezzo: ${price}`,
+    discount ? `Sconto: ${discount}` : null
+  ].filter(Boolean).join("\n");
+
+  const shareOfferUrl =
+    `https://t.me/share/url?url=${encodeURIComponent(amazonUrl)}&text=${encodeURIComponent(shareOfferText)}`;
+
+  const inviteUrl = channelUrl
+    ? `https://t.me/share/url?url=${encodeURIComponent(channelUrl)}&text=${encodeURIComponent("📡 Unisciti al canale AffareRadar Italia per ricevere le migliori offerte Amazon")}`
+    : null;
 
   const lines = [
     `<b>${autoBadge}</b>`,
@@ -64,9 +80,19 @@ export default async function handler(req, res) {
   let caption = lines.join("\n");
   if (caption.length > 1000) caption = caption.slice(0, 997) + "...";
 
-  const keyboard = {
-    inline_keyboard: [[{ text:"🛒 Vedi offerta su Amazon", url:amazonUrl }]]
-  };
+  const inlineKeyboard = [
+    [{ text:"🛒 Vedi offerta su Amazon", url:amazonUrl }],
+    [{ text:"📱 Apri offerta nell'App Amazon", url:amazonAppUrl }],
+    [{ text:"📤 Invia l'offerta ad un amico", url:shareOfferUrl }]
+  ];
+
+  if (inviteUrl) {
+    inlineKeyboard.push([
+      { text:"👥 Invita nel canale un amico", url:inviteUrl }
+    ]);
+  }
+
+  const keyboard = { inline_keyboard:inlineKeyboard };
 
   const apiBase = `https://api.telegram.org/bot${token}`;
   const endpoint = imageUrl ? `${apiBase}/sendPhoto` : `${apiBase}/sendMessage`;
