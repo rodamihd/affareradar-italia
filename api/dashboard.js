@@ -157,7 +157,9 @@ export default async function handler(req, res) {
       amazonDiscovery:Boolean(process.env.AMAZON_CREATORS_CREDENTIAL_ID && process.env.AMAZON_CREATORS_CREDENTIAL_SECRET && process.env.AMAZON_PARTNER_TAG),
       multiSourceDiscovery:true,
       affiliateTracking:Boolean(process.env.AMAZON_PARTNER_TAG),
-      deepLinkEngine:Boolean(process.env.DEEPLINK_URL_TEMPLATE)
+      deepLinkEngine:Boolean(process.env.DEEPLINK_URL_TEMPLATE),
+      channelStrategy:true,
+      contentRepurposing:true
     };
 
     return res.status(200).json({
