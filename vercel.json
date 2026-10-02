@@ -8,7 +8,7 @@
   "crons": [
     {
       "path": "/api/discover-multisource",
-      "schedule": "0 7 * * *"
+      "schedule": "15 12 * * *"
     },
     {
       "path": "/api/daily-top5",
