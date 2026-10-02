@@ -82,5 +82,27 @@ export default async function handler(req, res) {
   } catch {}
 
   res.setHeader("Cache-Control", "no-store");
+
+  const host = new URL(destination).hostname.toLowerCase();
+  const isAmazon = host === "amazon.it" || host.endsWith(".amazon.it") || host === "amzn.eu";
+
+  if (isAmazon) {
+    const escaped = destination
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;");
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    return res.status(200).send(`<!doctype html>
+<html lang="it">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Continua su Amazon</title></head>
+<body style="font-family:system-ui;max-width:680px;margin:48px auto;padding:0 20px;line-height:1.5">
+<h1 style="font-size:1.35rem">Continua su Amazon</h1>
+<p>Stai per aprire Amazon tramite un link affiliato di AffareRadar.</p>
+<p><a href="${escaped}" rel="nofollow sponsored" style="display:inline-block;padding:12px 18px;border:1px solid #222;border-radius:8px;text-decoration:none">Apri Amazon</a></p>
+<p style="font-size:.9rem;word-break:break-all">Destinazione: ${escaped}</p>
+</body></html>`);
+  }
+
   return res.redirect(302, destination);
 }
