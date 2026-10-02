@@ -1,5 +1,6 @@
 import { amazonAgentUserAgent } from "../lib/amazon-compliance.js";
 import { agentOsEvent } from "../lib/agentos-adapter.js";
+import { offerDagTemplate, dagSummary } from "../lib/agentos-dag.js";
 
 function authorized(req) {
   const cronSecret = process.env.CRON_SECRET;
@@ -315,6 +316,26 @@ async function recordAgentOsEvent(event) {
   } catch {}
 }
 
+async function createAgentOsDagForSignal(deal) {
+  if (!redisConfig()) return null;
+  try {
+    const dag = offerDagTemplate(deal, {
+      requirePublishApproval:true,
+      recheckDelaySeconds:Number(process.env.AGENTOS_DAG_RECHECK_SECONDS || 1800)
+    });
+    await redisCommand("SET", `affareradar:agentos:dag:${dag.dagId}`, JSON.stringify(dag), "EX", 604800);
+    await redisCommand("ZADD", "affareradar:agentos:dags", String(Date.parse(dag.updatedAt) || Date.now()), dag.dagId);
+    await recordAgentOsEvent(agentOsEvent("AFFARERADAR_DAG_CREATED", deal, {
+      lifecycle:"RUNNING",
+      knowledgeStatus:"PARSED",
+      payload:{ dagId:dag.dagId, summary:dagSummary(dag), trigger:"multisource_signal" }
+    }));
+    return dag;
+  } catch {
+    return null;
+  }
+}
+
 async function updateSourceStats(source, publish) {
   if (!redisConfig() || !source) return;
   const key = `affareradar:source:stats:${String(source).trim().toLowerCase()}`;
@@ -425,12 +446,14 @@ export default async function handler(req, res) {
       freshness:deal.lastVerifiedAt || null,
       payload:{ verificationRequired:true, sourceVerified:deal.sourceVerified === true }
     }));
+    const dag = await createAgentOsDagForSignal(deal);
     const publish = await submit(req, deal);
     await updateSourceStats(deal.source, publish);
     results.push({
       title:deal.title,
       dealScore:deal.dealScore,
       source:deal.source,
+      dag:dag ? { dagId:dag.dagId, status:dag.status } : null,
       publish
     });
   }
