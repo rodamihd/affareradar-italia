@@ -48,6 +48,16 @@ function authorized(req) {
 
 async function recordOutcomeEvent(input = {}) {
   if (!redisConfig()) return { ok:false, error:"redis_required_for_outcomes" };
+
+  const externalEventId = String(input.externalEventId || "").trim();
+  if (externalEventId) {
+    const idempotencyKey = `affareradar:outcome:idempotency:${Buffer.from(externalEventId).toString("base64url").slice(0, 120)}`;
+    const lock = await redisCommand("SET", idempotencyKey, "1", "NX", "EX", 31536000);
+    if (lock.result !== "OK") {
+      return { ok:true, duplicate:true, externalEventId };
+    }
+  }
+
   const body = input.body && typeof input.body === "object" ? input.body : input;
   const occurredAt = input.occurredAt ? Date.parse(input.occurredAt) : Date.now();
   const increments = {
@@ -74,17 +84,56 @@ async function recordOutcomeEvent(input = {}) {
     touched.push(dimension);
   }
   const ledger = {
-    eventId:`outcome_${Date.now()}_${Math.random().toString(36).slice(2,8)}`,
+    eventId:externalEventId || `outcome_${Date.now()}_${Math.random().toString(36).slice(2,8)}`,
+    externalEventId:externalEventId || null,
     occurredAt:input.occurredAt || new Date().toISOString(),
     dealId:input.dealId || null,
+    asin:body.asin || input.asin || null,
     category:body.category || null,
     source:body.source || null,
     dealType:body.dealType || null,
+    reportSource:input.reportSource || null,
     ...increments
   };
   await redisCommand("LPUSH", "affareradar:outcome:ledger", JSON.stringify(ledger));
   await redisCommand("LTRIM", "affareradar:outcome:ledger", 0, 999);
   return { ok:true, touched, ledger };
+}
+
+async function recordOutcomeBatch(items = []) {
+  if (!Array.isArray(items)) return { ok:false, error:"outcomes_array_required" };
+  const rows = items.slice(0, 250);
+  const results = [];
+  let recorded = 0;
+  let duplicates = 0;
+  let failed = 0;
+
+  for (const item of rows) {
+    try {
+      const result = await recordOutcomeEvent(item || {});
+      if (result.duplicate) duplicates += 1;
+      else if (result.ok) recorded += 1;
+      else failed += 1;
+      results.push({
+        ok:result.ok === true,
+        duplicate:result.duplicate === true,
+        eventId:result.ledger?.eventId || result.externalEventId || null,
+        error:result.error || null
+      });
+    } catch (error) {
+      failed += 1;
+      results.push({ ok:false, duplicate:false, eventId:null, error:String(error?.message || error) });
+    }
+  }
+
+  return {
+    ok:failed === 0,
+    received:rows.length,
+    recorded,
+    duplicates,
+    failed,
+    results
+  };
 }
 
 async function emitAgentOsEvent(event) {
@@ -546,6 +595,11 @@ export default async function handler(req, res) {
       return res.status(recorded.ok ? 200 : 503).json(recorded);
     }
 
+    if (action === "record_outcomes_batch") {
+      const recorded = await recordOutcomeBatch(req.body?.outcomes || []);
+      return res.status(recorded.ok ? 200 : 207).json(recorded);
+    }
+
     if (action === "process_tasks") {
       const processed = await processAgentOsTasks(req, req.body?.limit || 5);
       return res.status(processed.ok ? 200 : 503).json(processed);
@@ -809,6 +863,8 @@ export default async function handler(req, res) {
       agentOsSemanticDecisionCachePolicy:true,
       runtimeObservability:true,
       outcomeLedger:true,
+      outcomeBatchIngestion:true,
+      outcomeIdempotency:true,
       revenueCalibration:true,
       offerLifecycleManager:true,
       portfolioOptimizer:true,
