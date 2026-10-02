@@ -7,8 +7,12 @@
   },
   "crons": [
     {
+      "path": "/api/discover-amazon",
+      "schedule": "0 13 * * *"
+    },
+    {
       "path": "/api/discover-multisource",
-      "schedule": "15 12 * * *"
+      "schedule": "3 13 * * *"
     },
     {
       "path": "/api/daily-top5",
