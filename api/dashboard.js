@@ -7,6 +7,13 @@ import {
   taskRegistry
 } from "../lib/agentos-control-plane.js";
 import { universalEntityId, agentOsEvent } from "../lib/agentos-adapter.js";
+import {
+  offerDagTemplate,
+  readyDagNodes,
+  scheduleNodeRetry,
+  refreshDagStatus,
+  dagSummary
+} from "../lib/agentos-dag.js";
 
 function redisConfig() {
   const url = process.env.UPSTASH_REDIS_REST_URL;
@@ -178,6 +185,28 @@ async function executeAgentOsTask(req, record) {
     return { ok:true, action:"PORTFOLIO_OPTIMIZATION_REQUESTED" };
   }
 
+  if (task.taskType === "EVALUATE_OFFER") {
+    await redisCommand("SET", `affareradar:agentos:evaluate:${entityId}`, JSON.stringify({
+      requestedAt:new Date().toISOString(),
+      taskId:task.taskId,
+      offer:body
+    }), "EX", 86400);
+    return { ok:true, action:"EVALUATION_CHECKPOINT_RECORDED", entityId };
+  }
+
+  if (task.taskType === "LEARN_OUTCOME") {
+    await redisCommand("SET", `affareradar:agentos:learn:${entityId}`, JSON.stringify({
+      requestedAt:new Date().toISOString(),
+      taskId:task.taskId,
+      offer:body
+    }), "EX", 604800);
+    return { ok:true, action:"LEARNING_CHECKPOINT_RECORDED", entityId };
+  }
+
+  if (task.taskType === "CAPTURE_SIGNAL") {
+    return { ok:true, action:"CAPTURE_ALREADY_COMPLETED", entityId };
+  }
+
   return { ok:false, error:"unsupported_task_execution" };
 }
 
@@ -248,6 +277,163 @@ async function resolveAgentOsApproval(taskId, decision = "APPROVED") {
   return { ok:true, taskId, status:"QUEUED", authority };
 }
 
+async function saveDag(dag) {
+  await redisCommand("SET", `affareradar:agentos:dag:${dag.dagId}`, JSON.stringify(dag), "EX", 604800);
+  await redisCommand("ZADD", "affareradar:agentos:dags", String(Date.parse(dag.updatedAt || new Date().toISOString()) || Date.now()), dag.dagId);
+}
+
+async function loadDag(dagId) {
+  const rr = await redisCommand("GET", `affareradar:agentos:dag:${dagId}`);
+  if (!rr.result) return null;
+  try { return JSON.parse(rr.result); } catch { return null; }
+}
+
+async function createAgentOsDag(input = {}) {
+  if (!redisConfig()) return { ok:false, error:"redis_required_for_agentos_dag" };
+  const offer = input.offer || input.payload?.offer || {};
+  if (!offer.asin && !offer.amazonUrl && !offer.title) {
+    return { ok:false, error:"offer_required_for_dag" };
+  }
+  const dag = offerDagTemplate(offer, {
+    recheckDelaySeconds:input.recheckDelaySeconds,
+    requirePublishApproval:input.requirePublishApproval
+  });
+  await saveDag(dag);
+  await emitAgentOsEvent(agentOsEvent("AFFARERADAR_DAG_CREATED", offer, {
+    lifecycle:"RUNNING",
+    knowledgeStatus:"ACTIVE",
+    payload:{ dagId:dag.dagId, summary:dagSummary(dag) }
+  }));
+  return { ok:true, dag };
+}
+
+async function reconcileDagNode(dag, node, now = Date.now()) {
+  if (!node.taskId) return node;
+  const rr = await redisCommand("GET", `affareradar:agentos:task:${node.taskId}`);
+  if (!rr.result) return node;
+
+  let task;
+  try { task = JSON.parse(rr.result); } catch { return node; }
+
+  const next = { ...node };
+  if (task.status === "COMPLETED") {
+    next.status = "COMPLETED";
+    next.result = task.result || null;
+    next.completedAt = task.completedAt || new Date(now).toISOString();
+    next.lastError = null;
+    return next;
+  }
+
+  if (task.status === "WAIT_APPROVAL") {
+    next.status = "WAIT_APPROVAL";
+    return next;
+  }
+
+  if (task.status === "REJECTED") {
+    next.status = "REJECTED";
+    next.lastError = "task_rejected";
+    next.completedAt = task.updatedAt || new Date(now).toISOString();
+    return next;
+  }
+
+  if (task.status === "FAILED") {
+    return scheduleNodeRetry(
+      { ...next, attempts:Math.max(Number(next.attempts || 0), 1), taskId:null },
+      now,
+      task.result?.error || "task_failed"
+    );
+  }
+
+  if (task.status === "QUEUED") {
+    next.status = "RUNNING";
+  }
+  return next;
+}
+
+async function processAgentOsDag(req, dagId) {
+  if (!redisConfig()) return { ok:false, error:"redis_required_for_agentos_dag" };
+  let dag = await loadDag(dagId);
+  if (!dag) return { ok:false, error:"dag_not_found" };
+
+  const now = Date.now();
+  const reconciled = [];
+  for (const node of dag.nodes || []) {
+    reconciled.push(await reconcileDagNode(dag, node, now));
+  }
+  dag = { ...dag, nodes:reconciled };
+
+  if (dag.status === "FAILED" || dag.status === "COMPLETED") {
+    dag = refreshDagStatus(dag, now);
+    await saveDag(dag);
+    return { ok:true, dag, summary:dagSummary(dag) };
+  }
+
+  const ready = readyDagNodes(dag, now);
+  const submitted = [];
+
+  for (const node of ready.slice(0, 4)) {
+    const approvalRequired =
+      node.taskType === "PUBLISH_OFFER" &&
+      dag.options?.requirePublishApproval !== false;
+
+    const queued = await queueAgentOsTask({
+      taskType:node.taskType,
+      priority:node.taskType === "PUBLISH_OFFER" ? "high" : "normal",
+      approvalRequired,
+      idempotencyKey:`${dag.dagId}:${node.nodeId}:${Number(node.attempts || 0) + 1}`,
+      payload:{ offer:dag.offer, dagId:dag.dagId, nodeId:node.nodeId },
+      context:{ dagId:dag.dagId, nodeId:node.nodeId }
+    });
+
+    const updatedNode = dag.nodes.find(n => n.nodeId === node.nodeId);
+    if (!updatedNode) continue;
+
+    updatedNode.attempts = Number(updatedNode.attempts || 0) + 1;
+    updatedNode.taskId = queued.taskId || null;
+    updatedNode.startedAt = updatedNode.startedAt || new Date(now).toISOString();
+
+    if (!queued.ok || queued.accepted === false) {
+      const retried = scheduleNodeRetry(updatedNode, now, queued.error || "task_not_accepted");
+      Object.assign(updatedNode, retried);
+    } else if (queued.status === "WAIT_APPROVAL") {
+      updatedNode.status = "WAIT_APPROVAL";
+    } else {
+      updatedNode.status = "RUNNING";
+    }
+
+    submitted.push({ nodeId:node.nodeId, taskType:node.taskType, queued });
+  }
+
+  dag = refreshDagStatus(dag, now);
+  dag.recovery = {
+    ...(dag.recovery || {}),
+    retries:(dag.nodes || []).reduce((sum, n) => sum + Math.max(0, Number(n.attempts || 0) - 1), 0),
+    lastRecoveredAt:new Date(now).toISOString()
+  };
+  await saveDag(dag);
+
+  await emitAgentOsEvent(agentOsEvent("AFFARERADAR_DAG_TICK", dag.offer || {}, {
+    lifecycle:dag.status,
+    knowledgeStatus:"ACTIVE",
+    payload:{ dagId:dag.dagId, summary:dagSummary(dag), submitted }
+  }));
+
+  return { ok:true, dag, summary:dagSummary(dag), submitted };
+}
+
+async function recoverAgentOsDags(req, limit = 5) {
+  if (!redisConfig()) return { ok:false, error:"redis_required_for_agentos_dag" };
+  const rr = await redisCommand("ZREVRANGE", "affareradar:agentos:dags", 0, Math.max(0, Math.min(19, Number(limit || 5) - 1)));
+  const ids = Array.isArray(rr.result) ? rr.result : [];
+  const results = [];
+  for (const dagId of ids) {
+    const dag = await loadDag(dagId);
+    if (!dag || ["COMPLETED","FAILED"].includes(dag.status)) continue;
+    results.push(await processAgentOsDag(req, dagId));
+  }
+  return { ok:true, processed:results.length, results };
+}
+
 async function processAgentOsTasks(req, limit = 5) {
   if (!redisConfig()) return { ok:false, error:"redis_required_for_agentos_control" };
   const rr = await redisCommand("ZRANGE", "affareradar:agentos:tasks", 0, Math.max(0, Math.min(19, Number(limit || 5) - 1)));
@@ -314,6 +500,23 @@ export default async function handler(req, res) {
     if (action === "process_tasks") {
       const processed = await processAgentOsTasks(req, req.body?.limit || 5);
       return res.status(processed.ok ? 200 : 503).json(processed);
+    }
+
+    if (action === "create_dag") {
+      const created = await createAgentOsDag(req.body || {});
+      return res.status(created.ok ? 200 : 400).json(created);
+    }
+
+    if (action === "process_dag") {
+      const dagId = String(req.body?.dagId || "").trim();
+      if (!dagId) return res.status(400).json({ ok:false, error:"dag_id_required" });
+      const processed = await processAgentOsDag(req, dagId);
+      return res.status(processed.ok ? 200 : 400).json(processed);
+    }
+
+    if (action === "recover_dags") {
+      const recovered = await recoverAgentOsDags(req, req.body?.limit || 5);
+      return res.status(recovered.ok ? 200 : 503).json(recovered);
     }
 
     if (action === "approve_task" || action === "reject_task") {
@@ -412,7 +615,8 @@ export default async function handler(req, res) {
       verificationQueueCountResult,
       agentOsEventsResult,
       agentOsTaskCountResult,
-      agentOsApprovalCountResult
+      agentOsApprovalCountResult,
+      agentOsDagCountResult
     ] = await Promise.all([
       redisCommand("ZCARD", "affareradar:queue"),
       redisCommand("LRANGE", "affareradar:events", 0, 49),
@@ -425,7 +629,8 @@ export default async function handler(req, res) {
       redisCommand("ZCARD", "affareradar:verification:queue"),
       redisCommand("LRANGE", "affareradar:agentos:events", 0, 29),
       redisCommand("ZCARD", "affareradar:agentos:tasks"),
-      redisCommand("ZCARD", "affareradar:agentos:approvals")
+      redisCommand("ZCARD", "affareradar:agentos:approvals"),
+      redisCommand("ZCARD", "affareradar:agentos:dags")
     ]);
 
     const events = Array.isArray(eventsResult.result)
@@ -540,6 +745,8 @@ export default async function handler(req, res) {
       agentOsControlPlane:true,
       agentOsTaskAuthority:true,
       agentOsPriorityQueue:true,
+      agentOsDagOrchestrator:true,
+      agentOsDagRecovery:true,
       offerLifecycleManager:true,
       portfolioOptimizer:true,
       verificationQueueWorker:true,
@@ -571,7 +778,9 @@ export default async function handler(req, res) {
         autonomyLevel:configuredAutonomyLevel(),
         supportedTasks:taskRegistry(),
         queuedTasks:Number(agentOsTaskCountResult.result || 0),
-        pendingApprovals:Number(agentOsApprovalCountResult.result || 0)
+        pendingApprovals:Number(agentOsApprovalCountResult.result || 0),
+        dags:Number(agentOsDagCountResult.result || 0),
+        dagFlow:["CAPTURE","VERIFY","EVALUATE","PORTFOLIO","PUBLISH","RECHECK","LEARN"]
       },
       systemMode:String(process.env.AFFARERADAR_SYSTEM_MODE || "AUTO").toUpperCase(),
       agentOsEvents,
