@@ -7,6 +7,7 @@ import {
   taskRegistry
 } from "../lib/agentos-control-plane.js";
 import { universalEntityId, agentOsEvent } from "../lib/agentos-adapter.js";
+import { outcomeDimensions } from "../lib/outcome-learning.js";
 import {
   offerDagTemplate,
   readyDagNodes,
@@ -42,6 +43,47 @@ async function redisCommand(command, ...args) {
 function authorized(req) {
   const secret = process.env.PUBLISH_SECRET;
   return Boolean(secret && req.headers["x-affareradar-secret"] === secret);
+}
+
+async function recordOutcomeEvent(input = {}) {
+  if (!redisConfig()) return { ok:false, error:"redis_required_for_outcomes" };
+  const body = input.body && typeof input.body === "object" ? input.body : input;
+  const occurredAt = input.occurredAt ? Date.parse(input.occurredAt) : Date.now();
+  const increments = {
+    impressions:Math.max(0, Number(input.impressions || 0)),
+    clicks:Math.max(0, Number(input.clicks || 0)),
+    conversions:Math.max(0, Number(input.conversions || 0)),
+    engagements:Math.max(0, Number(input.engagements || 0)),
+    revenueEUR:Math.max(0, Number(input.revenueEUR || 0))
+  };
+  const touched = [];
+  for (const dimension of outcomeDimensions(body, Number.isFinite(occurredAt) ? occurredAt : Date.now())) {
+    const key = `affareradar:outcome:${dimension}`;
+    const rr = await redisCommand("GET", key);
+    let stats = {
+      impressions:0, clicks:0, conversions:0, engagements:0,
+      publishes:0, successfulPublishes:0, revenueEUR:0
+    };
+    if (rr.result) {
+      try { stats = { ...stats, ...JSON.parse(rr.result) }; } catch {}
+    }
+    for (const [name, value] of Object.entries(increments)) stats[name] = Number(stats[name] || 0) + value;
+    stats.lastUpdatedAt = new Date().toISOString();
+    await redisCommand("SET", key, JSON.stringify(stats), "EX", 7776000);
+    touched.push(dimension);
+  }
+  const ledger = {
+    eventId:`outcome_${Date.now()}_${Math.random().toString(36).slice(2,8)}`,
+    occurredAt:input.occurredAt || new Date().toISOString(),
+    dealId:input.dealId || null,
+    category:body.category || null,
+    source:body.source || null,
+    dealType:body.dealType || null,
+    ...increments
+  };
+  await redisCommand("LPUSH", "affareradar:outcome:ledger", JSON.stringify(ledger));
+  await redisCommand("LTRIM", "affareradar:outcome:ledger", 0, 999);
+  return { ok:true, touched, ledger };
 }
 
 async function emitAgentOsEvent(event) {
@@ -497,6 +539,11 @@ export default async function handler(req, res) {
   if (req.method === "POST") {
     const action = String(req.body?.action || "submit_task").trim().toLowerCase();
 
+    if (action === "record_outcome") {
+      const recorded = await recordOutcomeEvent(req.body?.outcome || req.body || {});
+      return res.status(recorded.ok ? 200 : 503).json(recorded);
+    }
+
     if (action === "process_tasks") {
       const processed = await processAgentOsTasks(req, req.body?.limit || 5);
       return res.status(processed.ok ? 200 : 503).json(processed);
@@ -755,6 +802,8 @@ export default async function handler(req, res) {
       agentOsMemoryProposalValidation:true,
       agentOsReleaseManifest:true,
       agentOsSemanticDecisionCachePolicy:true,
+      outcomeLedger:true,
+      revenueCalibration:true,
       offerLifecycleManager:true,
       portfolioOptimizer:true,
       verificationQueueWorker:true,
