@@ -553,6 +553,7 @@ export default async function handler(req, res) {
   } catch {}
 
   runtimeSuccess(__obs, { sources:sources.length, candidates:unique.length, submitted:results.length });
+  runtimeSuccess(__obs, { sources:sources.length, candidates:unique.length, submitted:results.length });
   return res.status(200).json({
     ok:true,
     sources:sourceResults,
