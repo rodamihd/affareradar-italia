@@ -22,7 +22,9 @@ import {
   releaseManifest,
   knowledgeProposal,
   semanticDecisionCachePolicy
-} from "../lib/agentos-17_5-profile.js";
+} from "../lib/agentos-26-profile.js";
+import { buildOpportunityEvent } from "../lib/opportunity-event-contract.js";
+import { superviseOpportunity } from "../lib/offerteradar-supervisor.js";
 import crypto from "node:crypto";
 import { startRuntimeObservation, runtimeSuccess, runtimeFailure } from "../lib/runtime-observability.js";
 import { redisConfig, redisCommand } from "../lib/redis-rest.js";
@@ -725,6 +727,79 @@ export default async function handler(req, res) {
   });
 
   const routing = agentOsRoutingDecision({ mode, policy, verification, opportunity });
+  const opportunityEvent = buildOpportunityEvent(body, {
+    entityId:universalEntityId(body),
+    lifecycle:lifecycleStore.value || {},
+    verification,
+    freshness,
+    policy,
+    opportunity,
+    revenue,
+    sourceReputation,
+    mode,
+    routing,
+    autonomyLevel:process.env.AFFARERADAR_AGENTOS_AUTONOMY || "SUPERVISED"
+  }, now);
+  const supervisorDecision = superviseOpportunity(opportunityEvent, {
+    reward
+  }, now);
+
+  await recordAgentOsEvent("AFFARERADAR_SUPERVISOR_DECISION", body, {
+    lifecycle:lifecycleStore.value?.status || "DISCOVERED",
+    knowledgeStatus:knowledge.state,
+    policy,
+    mode,
+    verification,
+    opportunity,
+    revenue,
+    sourceReputation,
+    freshness,
+    payload:{ routing, opportunityEvent, supervisorDecision }
+  });
+
+  if (supervisorDecision.status === "RECHECK") {
+    const verificationQueue = await enqueueVerification(body, verifyPlan);
+    await trackMetric("agentos26_recheck", body, { supervisorDecision, verificationQueue });
+    return res.status(200).json({
+      ok:true,
+      published:false,
+      decision:"recheck",
+      reason:supervisorDecision.reason,
+      lifecycle:lifecycleStore.value?.status || "DISCOVERED",
+      agentOsVersion:"26.0",
+      supervisorDecision,
+      opportunityEvent,
+      verificationQueue
+    });
+  }
+
+  if (supervisorDecision.status === "HUMAN_REVIEW") {
+    await trackMetric("agentos26_human_review", body, { supervisorDecision });
+    return res.status(200).json({
+      ok:true,
+      published:false,
+      decision:"human_review",
+      reason:supervisorDecision.reason,
+      lifecycle:lifecycleStore.value?.status || "VERIFIED",
+      agentOsVersion:"26.0",
+      supervisorDecision,
+      opportunityEvent
+    });
+  }
+
+  if (supervisorDecision.status === "REJECT") {
+    await trackMetric("agentos26_rejected", body, { supervisorDecision });
+    return res.status(200).json({
+      ok:true,
+      published:false,
+      decision:"rejected",
+      reason:supervisorDecision.reason,
+      lifecycle:lifecycleStore.value?.status || "DISCOVERED",
+      agentOsVersion:"26.0",
+      supervisorDecision,
+      opportunityEvent
+    });
+  }
 
   if (!egress.passed) {
     await recordAgentOsEvent("AFFARERADAR_EGRESS_BLOCKED", body, {
@@ -744,7 +819,7 @@ export default async function handler(req, res) {
       ok:true,
       published:false,
       decision:"blocked",
-      reason:"agentos_17_5_egress_guard",
+      reason:"agentos_26_egress_guard",
       lifecycle:lifecycleStore.value?.status || "DISCOVERED",
       intent,
       freshness,
@@ -1066,7 +1141,9 @@ export default async function handler(req, res) {
     knowledge,
     knowledgeStore,
     semanticCache,
-    releaseManifest:manifest
+    releaseManifest:manifest,
+    supervisorDecision,
+    opportunityEvent
   });
 
   try {
