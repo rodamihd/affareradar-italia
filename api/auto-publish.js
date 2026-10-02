@@ -13,6 +13,8 @@ import { learnedOutcomeProfile, mergeLearnedSignals } from "../lib/outcome-learn
 import { expectedRevenue } from "../lib/expected-revenue-engine.js";
 import { verificationPlan } from "../lib/verification-orchestrator.js";
 import { systemMode } from "../lib/safe-mode-controller.js";
+import { agentOsEvent, agentOsRoutingDecision } from "../lib/agentos-adapter.js";
+import { buildOfferLifecycle } from "../lib/offer-lifecycle.js";
 import crypto from "node:crypto";
 
 const memory = globalThis.__affareRadarState || {
@@ -33,7 +35,8 @@ function buildFingerprint(body) {
   const coupon = String(body.coupon || "").trim();
   const stack = String(body.stack || "").trim();
   const type = String(body.dealType || "").trim().toLowerCase();
-  return [asin || String(body.amazonUrl || "").trim(), price, coupon, stack, type].join("|");
+  const rewardProgram = String(body.rewardProgram || body.program || "").trim().toLowerCase();
+  return [asin || String(body.amazonUrl || "").trim(), price, coupon, stack, type, rewardProgram].join("|");
 }
 
 function buildDealId(body) {
@@ -114,7 +117,7 @@ function validateAmazonUrl(value) {
   try {
     const u = new URL(value);
     const host = u.hostname.toLowerCase();
-    return host === "amazon.it" || host.endsWith(".amazon.it") || host === "amzn.eu";
+    return host === "amazon.it" || host.endsWith(".amazon.it") || host === "amzn.eu" || host === "primevideo.com" || host === "www.primevideo.com" || host === "link.amazon";
   } catch {
     return false;
   }
@@ -399,6 +402,18 @@ async function readSourceReputation(body) {
   }
 }
 
+async function recordAgentOsEvent(type, body, extra = {}) {
+  if (!redisConfig()) return null;
+  try {
+    const event = agentOsEvent(type, body, extra);
+    await redisCommand("LPUSH", "affareradar:agentos:events", JSON.stringify(event));
+    await redisCommand("LTRIM", "affareradar:agentos:events", 0, 499);
+    return event;
+  } catch {
+    return null;
+  }
+}
+
 async function readOutcomeProfile(body) {
   const category = normalizeCategory(body.category);
   let stats = {};
@@ -632,8 +647,20 @@ export default async function handler(req, res) {
     verification
   });
 
+  const routing = agentOsRoutingDecision({ mode, policy, verification, opportunity });
   if (!mode.publishingAllowed) {
-    await trackMetric("safe_mode_blocked", body, { mode, policy, verification, opportunity, revenue, verifyPlan });
+    await recordAgentOsEvent("AFFARERADAR_HELD", body, {
+      lifecycle:"BLOCKED",
+      knowledgeStatus:"PARSED",
+      policy,
+      mode,
+      verification,
+      opportunity,
+      revenue,
+      sourceReputation,
+      payload:{ routing }
+    });
+    await trackMetric("safe_mode_blocked", body, { mode, policy, verification, opportunity, revenue, verifyPlan, routing });
     return res.status(200).json({
       ok:true,
       published:false,
@@ -645,12 +672,24 @@ export default async function handler(req, res) {
       verification,
       opportunity,
       revenue,
-      verifyPlan
+      verifyPlan,
+      routing
     });
   }
 
   if (policy.blocking.length) {
-    await trackMetric("policy_blocked", body, { policy, verification, sourceReputation, opportunity });
+    await recordAgentOsEvent("AFFARERADAR_POLICY_BLOCKED", body, {
+      lifecycle:"BLOCKED",
+      knowledgeStatus:"PARSED",
+      policy,
+      mode,
+      verification,
+      opportunity,
+      revenue,
+      sourceReputation,
+      payload:{ routing }
+    });
+    await trackMetric("policy_blocked", body, { policy, verification, sourceReputation, opportunity, routing });
     return res.status(200).json({
       ok:true,
       published:false,
@@ -666,6 +705,17 @@ export default async function handler(req, res) {
 
   if (!isReward && opportunity.action === "VERIFY") {
     const verificationQueue = await enqueueVerification(body, verifyPlan);
+    await recordAgentOsEvent("AFFARERADAR_VERIFICATION_REQUESTED", body, {
+      lifecycle:"PARSED",
+      knowledgeStatus:"PARSED",
+      policy,
+      mode,
+      verification,
+      opportunity,
+      revenue,
+      sourceReputation,
+      payload:{ routing, verifyPlan, verificationQueue }
+    });
     await trackMetric("verification_required", body, { policy, verification, sourceReputation, opportunity, revenue, verifyPlan, verificationQueue });
     return res.status(200).json({
       ok:true,
@@ -827,7 +877,27 @@ export default async function handler(req, res) {
   await recordOutcomePublish(body, true);
 
   const lifecycle = nextLifecycle(lifecycleStore.value, body, now);
-  await writeLifecycle(lifecycleStore, dealId, lifecycle);
+  const agentLifecycle = buildOfferLifecycle(
+    { ...body, telegramMessageId:publishData.telegram_message_id },
+    { ...(lifecycleStore.value || {}), lastPublishedAt:nowIso(now) },
+    now
+  );
+  await writeLifecycle(lifecycleStore, dealId, { ...lifecycle, agentLifecycle:agentLifecycle.status });
+  await recordAgentOsEvent("AFFARERADAR_PUBLISHED", body, {
+    lifecycle:agentLifecycle.status,
+    knowledgeStatus:"ACTIVE",
+    policy,
+    mode,
+    verification,
+    opportunity,
+    revenue,
+    sourceReputation,
+    payload:{
+      routing,
+      telegramMessageId:publishData.telegram_message_id,
+      expectedRevenuePer1000ImpressionsEUR:revenue.expectedRevenuePer1000ImpressionsEUR
+    }
+  });
   const distribution = channelPlan(body);
   const storefrontDecision = isReward
     ? {
@@ -878,7 +948,9 @@ export default async function handler(req, res) {
     outcomeProfile,
     revenue,
     verifyPlan,
-    mode
+    mode,
+    routing,
+    agentLifecycle
   });
 
   try {
@@ -897,6 +969,8 @@ export default async function handler(req, res) {
         revenue,
         verifyPlan,
         mode,
+        routing,
+        agentLifecycle,
         telegramMessageId:publishData.telegram_message_id
       });
       await redisCommand("SET", `affareradar:evidence:${evidence.evidenceId}`, JSON.stringify(evidence), "EX", 7776000);
@@ -940,6 +1014,8 @@ export default async function handler(req, res) {
     outcomeProfile,
     revenue,
     verifyPlan,
-    mode
+    mode,
+    routing,
+    agentLifecycle
   });
 }
