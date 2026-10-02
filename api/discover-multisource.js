@@ -344,7 +344,7 @@ async function createAgentOsDagForSignal(deal) {
   if (!redisConfig()) return null;
   try {
     const dag = offerDagTemplate(deal, {
-      requirePublishApproval:true,
+      requirePublishApproval:false,
       recheckDelaySeconds:Number(process.env.AGENTOS_DAG_RECHECK_SECONDS || 1800)
     });
     await redisCommand("SET", `affareradar:agentos:dag:${dag.dagId}`, JSON.stringify(dag), "EX", 604800);
@@ -379,6 +379,29 @@ async function updateSourceStats(source, publish) {
     stats.lastUpdatedAt = new Date().toISOString();
     await redisCommand("SET", key, JSON.stringify(stats), "EX", 2592000);
   } catch {}
+}
+
+async function enqueueSignalVerification(deal, dag) {
+  if (!redisConfig()) return { queued:false, error:"redis_required" };
+  const dealId = deal.asin || deal.signalClaims?.asinCandidate || universalEntityId(deal);
+  const plan = {
+    asin:deal.asin || deal.signalClaims?.asinCandidate || null,
+    currentState:"SIGNAL_ONLY",
+    attempts:["creators_api","pa_api","amazon_link_tool_manual"],
+    requestedBy:"SignalQuarantine2",
+    quarantineId:deal.signalClaims?.quarantineId || null
+  };
+  const payload = {
+    body:deal,
+    dealId,
+    plan,
+    queuedAt:new Date().toISOString(),
+    dagId:dag?.dagId || null,
+    quarantineId:deal.signalClaims?.quarantineId || null
+  };
+  await redisCommand("SET", `affareradar:verification:item:${dealId}`, JSON.stringify(payload), "EX", 86400);
+  await redisCommand("ZADD", "affareradar:verification:queue", String(Date.now()), dealId);
+  return { queued:true, dealId, dagId:dag?.dagId || null, plan };
 }
 
 async function submit(req, deal) {
@@ -482,12 +505,28 @@ export default async function handler(req, res) {
       }
     }));
     const dag = await createAgentOsDagForSignal(deal);
-    const publish = await submit(req, deal);
+    const verificationQueue = await enqueueSignalVerification(deal, dag);
+    const publish = {
+      ok:true,
+      status:202,
+      data:{
+        ok:true,
+        published:false,
+        decision:"verify",
+        reason:"signal_quarantine_verification_required",
+        verificationQueue
+      }
+    };
     await updateSourceStats(deal.source, publish);
     results.push({
       title:deal.title,
       dealScore:deal.dealScore,
       source:deal.source,
+      quarantine:deal.signalClaims ? {
+        quarantineId:deal.signalClaims.quarantineId,
+        state:deal.signalClaims.state,
+        asinCandidate:deal.signalClaims.asinCandidate
+      } : null,
       dag:dag ? { dagId:dag.dagId, status:dag.status } : null,
       publish
     });
