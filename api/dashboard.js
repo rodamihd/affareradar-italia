@@ -89,7 +89,10 @@ export default async function handler(req, res) {
       "repetition_blocked",
       "originality_blocked",
       "promotion_expired_blocked",
-      "product_excluded_blocked"
+      "product_excluded_blocked",
+      "policy_blocked",
+      "verification_required",
+      "opportunity_not_publishable"
     ];
 
     const metricResults = await Promise.all(
@@ -199,6 +202,10 @@ export default async function handler(req, res) {
       productExclusionGuard:true,
       promotionExpiryKillSwitch:true,
       amazonDataIsolation:true,
+      amazonVerificationBroker:true,
+      opportunityEngineV2:true,
+      policyAsCodeEngine:true,
+      sourceReputationEngine:true,
       complianceEvidenceVault:true,
       authorizedTrafficSources:Boolean(process.env.AMAZON_ASSOCIATES_APPROVED_CHANNELS)
     };
