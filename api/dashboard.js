@@ -399,6 +399,19 @@ async function reconcileDagNode(dag, node, now = Date.now()) {
   try { task = JSON.parse(rr.result); } catch { return node; }
 
   const next = { ...node };
+  const startedAt = Date.parse(next.startedAt || task.updatedAt || task.createdAt || "");
+  const ageSeconds = Number.isFinite(startedAt) ? Math.max(0, (now - startedAt) / 1000) : 0;
+  const executionTimedOut = ["QUEUED","RUNNING"].includes(task.status) && ageSeconds > Number(next.timeoutSeconds || 30);
+  const externalTimedOut = task.status === "WAITING_EXTERNAL" && ageSeconds > Number(next.externalTimeoutSeconds || 900);
+
+  if (executionTimedOut || externalTimedOut) {
+    return scheduleNodeRetry(
+      { ...next, taskId:null },
+      now,
+      executionTimedOut ? "task_timeout" : "external_wait_timeout"
+    );
+  }
+
   if (task.status === "COMPLETED") {
     next.status = "COMPLETED";
     next.result = task.result || null;
@@ -879,6 +892,7 @@ export default async function handler(req, res) {
       agentOsDagOrchestrator:true,
       agentOsDagRecovery:true,
       agentOsAsyncTaskSemantics:true,
+      agentOsTimeoutEnforcement:true,
       agentOsSelfTest:true,
       sharedRedisAdapter:true,
       agentOs17_5Profile:true,
