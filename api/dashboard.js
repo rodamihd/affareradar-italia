@@ -84,7 +84,9 @@ export default async function handler(req, res) {
       "attribution_click",
       "rejected_creator_quality",
       "republish_blocked",
-      "reward_validation_failed"
+      "reward_validation_failed",
+      "traffic_source_blocked",
+      "repetition_blocked"
     ];
 
     const metricResults = await Promise.all(
@@ -187,7 +189,10 @@ export default async function handler(req, res) {
       timeSlotOptimizer:true,
       republishIntelligence:true,
       amazonRewardsEngine:true,
-      externalPriceSignals:"internal_only"
+      externalPriceSignals:"internal_only",
+      contentRepetitionGuard:true,
+      complianceEvidenceVault:true,
+      authorizedTrafficSources:Boolean(process.env.AMAZON_ASSOCIATES_APPROVED_CHANNELS)
     };
 
     return res.status(200).json({
