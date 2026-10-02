@@ -2,6 +2,7 @@ import { amazonAgentUserAgent } from "../lib/amazon-compliance.js";
 import { agentOsEvent, universalEntityId } from "../lib/agentos-adapter.js";
 import { buildSignalQuarantine, extractAsinFromAmazonUrl } from "../lib/signal-quarantine.js";
 import { offerDagTemplate, dagSummary } from "../lib/agentos-dag.js";
+import { startRuntimeObservation, runtimeSuccess, runtimeFailure } from "../lib/runtime-observability.js";
 import { sourceReputationKeys, applySourceOutcome } from "../lib/source-reputation.js";
 
 function authorized(req) {
@@ -432,6 +433,7 @@ async function submit(req, deal) {
 }
 
 export default async function handler(req, res) {
+  const __obs = startRuntimeObservation(req, "/api/discover-multisource");
   if (req.method !== "GET" && req.method !== "POST") {
     return res.status(405).json({ ok:false, error:"method_not_allowed" });
   }
@@ -550,6 +552,7 @@ export default async function handler(req, res) {
     }
   } catch {}
 
+  runtimeSuccess(__obs, { sources:sources.length, candidates:unique.length, submitted:results.length });
   return res.status(200).json({
     ok:true,
     sources:sourceResults,

@@ -5,6 +5,7 @@ import { offerDagTemplate, dagSummary } from "../lib/agentos-dag.js";
 import { extractAsinFromUrl } from "../lib/verification-orchestrator.js";
 import { sourceReputationKeys, applySourceOutcome } from "../lib/source-reputation.js";
 import crypto from "node:crypto";
+import { startRuntimeObservation, runtimeSuccess, runtimeFailure } from "../lib/runtime-observability.js";
 
 const MARKETPLACE = "www.amazon.it";
 const TOKEN_ENDPOINT = "https://api.amazon.co.uk/auth/o2/token";
@@ -589,6 +590,7 @@ async function publishDeal(req, deal) {
 }
 
 export default async function handler(req, res) {
+  const __obs = startRuntimeObservation(req, "/api/discover-amazon");
   if (req.method !== "GET" && req.method !== "POST") {
     return res.status(405).json({ ok:false, error:"method_not_allowed" });
   }
@@ -666,6 +668,7 @@ export default async function handler(req, res) {
       }
     } catch {}
 
+    runtimeSuccess(__obs, { discovered:unique.length, submitted:results.length, verificationProcessed:verificationQueue.processed || 0 });
     return res.status(200).json({
       ok:true,
       source:cfg ? "amazon_creators_api" : "amazon_verification_only",
@@ -677,6 +680,7 @@ export default async function handler(req, res) {
       results
     });
   } catch (error) {
+    runtimeFailure(__obs, error);
     return res.status(502).json({
       ok:false,
       error:"amazon_discovery_failed",

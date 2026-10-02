@@ -15,6 +15,7 @@ import {
   refreshDagStatus,
   dagSummary
 } from "../lib/agentos-dag.js";
+import { startRuntimeObservation, runtimeSuccess, runtimeFailure } from "../lib/runtime-observability.js";
 
 function redisConfig() {
   const url = process.env.UPSTASH_REDIS_REST_URL;
@@ -526,6 +527,7 @@ async function processAgentOsTasks(req, limit = 5) {
 }
 
 export default async function handler(req, res) {
+  const __obs = startRuntimeObservation(req, "/api/dashboard");
   if (req.method !== "GET" && req.method !== "POST") {
     return res.status(405).json({ ok:false, error:"method_not_allowed" });
   }
@@ -814,6 +816,7 @@ export default async function handler(req, res) {
       authorizedTrafficSources:Boolean(process.env.AMAZON_ASSOCIATES_APPROVED_CHANNELS)
     };
 
+    runtimeSuccess(__obs, { redisConfigured:true, queueCount:Number(queueCountResult.result || 0), verificationQueueCount:Number(verificationQueueCountResult.result || 0) });
     return res.status(200).json({
       ok:true,
       redisConfigured:true,
@@ -854,6 +857,7 @@ export default async function handler(req, res) {
       telegramHealth
     });
   } catch (error) {
+    runtimeFailure(__obs, error);
     return res.status(502).json({
       ok:false,
       error:"dashboard_read_failed",
