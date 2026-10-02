@@ -3,6 +3,7 @@ import { evaluateStorefrontCandidate, storefrontContent } from "../lib/storefron
 import { creatorQualityScore, publishingWindow } from "../lib/creator-quality.js";
 import { evaluateRepublish } from "../lib/republish-intelligence.js";
 import { evaluateAmazonReward, rewardContent } from "../lib/rewards-engine.js";
+import { evaluateRepetition, evaluateTrafficSource, evidenceRecord } from "../lib/creator-compliance.js";
 import crypto from "node:crypto";
 
 const memory = globalThis.__affareRadarState || {
@@ -447,6 +448,45 @@ export default async function handler(req, res) {
       }
     : revalidate(body, now);
   const dealId = buildDealId(body);
+
+  const trafficSource = evaluateTrafficSource("telegram");
+  if (!trafficSource.passed) {
+    await trackMetric("traffic_source_blocked", body, { trafficSource });
+    return res.status(200).json({
+      ok:true,
+      published:false,
+      decision:"rejected",
+      reason:"traffic_source_not_authorized",
+      lifecycle:"VERIFIED",
+      trafficSource
+    });
+  }
+
+  let recentContent = [];
+  try {
+    if (redisConfig()) {
+      const rr = await redisCommand("LRANGE", "affareradar:events", 0, 39);
+      const rows = Array.isArray(rr.result) ? rr.result : [];
+      recentContent = rows.map(x => {
+        try { return JSON.parse(x); } catch { return null; }
+      }).filter(x => x && x.event === "published");
+    }
+  } catch {}
+
+  const repetition = evaluateRepetition({ ...body, dealId }, recentContent);
+  if (!repetition.passed) {
+    await trackMetric("repetition_blocked", body, { repetition, trafficSource });
+    return res.status(200).json({
+      ok:true,
+      published:false,
+      decision:"rejected",
+      reason:"content_repetition_blocked",
+      lifecycle:"VERIFIED",
+      repetition,
+      trafficSource
+    });
+  }
+
   const lifecycleStore = await readLifecycle(dealId);
   const creatorQuality = creatorQualityScore(body);
   const window = publishingWindow(new Date(now));
@@ -618,8 +658,25 @@ export default async function handler(req, res) {
     creatorQuality,
     publishingWindow:window,
     republish,
-    reward:isReward ? reward : null
+    reward:isReward ? reward : null,
+    repetition,
+    trafficSource
   });
+
+  try {
+    if (redisConfig()) {
+      const evidence = evidenceRecord(body, {
+        channel:"telegram",
+        publicationCompliance:publishData.publicationCompliance || null,
+        repetition,
+        trafficSource,
+        telegramMessageId:publishData.telegram_message_id
+      });
+      await redisCommand("SET", `affareradar:evidence:${evidence.evidenceId}`, JSON.stringify(evidence), "EX", 7776000);
+      await redisCommand("LPUSH", "affareradar:evidence:index", evidence.evidenceId);
+      await redisCommand("LTRIM", "affareradar:evidence:index", 0, 499);
+    }
+  } catch {}
 
   return res.status(200).json({
     ok:true,
@@ -644,6 +701,8 @@ export default async function handler(req, res) {
     creatorQuality,
     publishingWindow:window,
     republish,
-    reward:isReward ? reward : null
+    reward:isReward ? reward : null,
+    repetition,
+    trafficSource
   });
 }
