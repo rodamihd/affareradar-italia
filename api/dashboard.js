@@ -224,7 +224,7 @@ async function executeAgentOsTask(req, record) {
       agentOsTaskId:task.taskId
     }), "EX", 86400);
     await redisCommand("ZADD", "affareradar:verification:queue", String(Date.now()), dealId);
-    return { ok:true, action:"VERIFICATION_QUEUED", dealId };
+    return { ok:true, action:"VERIFICATION_QUEUED", dealId, asynchronous:true };
   }
 
   if (task.taskType === "PUBLISH_OFFER") {
@@ -241,7 +241,21 @@ async function executeAgentOsTask(req, record) {
       body:JSON.stringify({ ...body, agentOsTaskId:task.taskId })
     });
     const data = await response.json().catch(() => ({}));
-    return { ok:response.ok && data.ok !== false, action:"PUBLISH_PIPELINE_CALLED", result:data };
+    if (!response.ok || data.ok === false) {
+      return { ok:false, action:"PUBLISH_PIPELINE_FAILED", error:data.error || `http_${response.status}`, result:data };
+    }
+    if (data.published === true) {
+      return { ok:true, action:"PUBLISHED", result:data };
+    }
+    if (["verify","queued"].includes(String(data.decision || "").toLowerCase())) {
+      return { ok:true, asynchronous:true, action:"PUBLISH_WAITING", result:data };
+    }
+    return {
+      ok:false,
+      action:"PUBLISH_NOT_COMPLETED",
+      error:`publish_not_completed:${String(data.decision || "unknown")}`,
+      result:data
+    };
   }
 
   if (task.taskType === "RUN_DISCOVERY") {
@@ -413,7 +427,7 @@ async function reconcileDagNode(dag, node, now = Date.now()) {
     );
   }
 
-  if (task.status === "QUEUED") {
+  if (task.status === "QUEUED" || task.status === "WAITING_EXTERNAL") {
     next.status = "RUNNING";
   }
   return next;
@@ -530,14 +544,26 @@ async function processAgentOsTasks(req, limit = 5) {
       result = { ok:false, error:String(error?.message || error) };
     }
 
-    const status = result.ok ? "COMPLETED" : "FAILED";
-    const updated = { ...record, status, result, completedAt:new Date().toISOString() };
+    const status = result.ok
+      ? (result.asynchronous === true ? "WAITING_EXTERNAL" : "COMPLETED")
+      : "FAILED";
+    const updated = {
+      ...record,
+      status,
+      result,
+      completedAt:status === "COMPLETED" ? new Date().toISOString() : null,
+      updatedAt:new Date().toISOString()
+    };
     await redisCommand("SET", `affareradar:agentos:task:${taskId}`, JSON.stringify(updated), "EX", 604800);
     await redisCommand("ZREM", "affareradar:agentos:tasks", taskId);
     await redisCommand("INCR", `affareradar:metrics:agentos_task_${status.toLowerCase()}`);
 
+    const eventType =
+      status === "COMPLETED" ? "AFFARERADAR_AGENTOS_TASK_COMPLETED" :
+      status === "WAITING_EXTERNAL" ? "AFFARERADAR_AGENTOS_TASK_WAITING_EXTERNAL" :
+      "AFFARERADAR_AGENTOS_TASK_FAILED";
     await emitAgentOsEvent(agentOsEvent(
-      status === "COMPLETED" ? "AFFARERADAR_AGENTOS_TASK_COMPLETED" : "AFFARERADAR_AGENTOS_TASK_FAILED",
+      eventType,
       record.payload?.offer || record.input || {},
       {
         lifecycle:status,
@@ -672,6 +698,7 @@ export default async function handler(req, res) {
       "agentos_control_blocked",
       "agentos_task_completed",
       "agentos_task_failed",
+      "agentos_task_waiting_external",
       "agentos_egress_blocked"
     ];
 
@@ -850,6 +877,7 @@ export default async function handler(req, res) {
       agentOsPriorityQueue:true,
       agentOsDagOrchestrator:true,
       agentOsDagRecovery:true,
+      agentOsAsyncTaskSemantics:true,
       agentOs17_5Profile:true,
       agentOsMixedMode:true,
       agentOsFreshnessSla:true,
