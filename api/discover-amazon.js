@@ -1,4 +1,6 @@
 import { amazonAgentUserAgent } from "../lib/amazon-compliance.js";
+import { mergeVerifiedAmazonData } from "../lib/amazon-verification-broker.js";
+import { agentOsEvent } from "../lib/agentos-adapter.js";
 
 const MARKETPLACE = "www.amazon.it";
 const TOKEN_ENDPOINT = "https://api.amazon.co.uk/auth/o2/token";
@@ -200,6 +202,89 @@ function toDeal(item, query) {
   };
 }
 
+async function recordAgentOsEvent(event) {
+  if (!redisConfig()) return;
+  try {
+    await redisCommand("LPUSH", "affareradar:agentos:events", JSON.stringify(event));
+    await redisCommand("LTRIM", "affareradar:agentos:events", 0, 499);
+  } catch {}
+}
+
+async function processVerificationQueue(req, token, cfg) {
+  if (!redisConfig()) return { processed:0, verified:0, results:[] };
+
+  const rr = await redisCommand("ZRANGE", "affareradar:verification:queue", 0, 2);
+  const ids = Array.isArray(rr.result) ? rr.result : [];
+  const results = [];
+  let verified = 0;
+
+  for (const dealId of ids) {
+    const itemResult = await redisCommand("GET", `affareradar:verification:item:${dealId}`);
+    if (!itemResult.result) {
+      await redisCommand("ZREM", "affareradar:verification:queue", dealId);
+      continue;
+    }
+
+    let queued;
+    try { queued = JSON.parse(itemResult.result); } catch { queued = null; }
+    if (!queued?.body) {
+      await redisCommand("ZREM", "affareradar:verification:queue", dealId);
+      await redisCommand("DEL", `affareradar:verification:item:${dealId}`);
+      continue;
+    }
+
+    const asin = String(queued.plan?.asin || queued.body.asin || "").trim().toUpperCase();
+    if (!asin) {
+      results.push({ dealId, ok:false, error:"asin_missing" });
+      continue;
+    }
+
+    try {
+      const items = await searchItems(token, cfg, asin);
+      const exact = items.find(item => String(item?.asin || "").toUpperCase() === asin);
+      const verifiedDeal = exact ? toDeal(exact, `verify:${asin}`) : null;
+
+      if (!verifiedDeal) {
+        results.push({ dealId, asin, ok:false, error:"amazon_exact_match_not_found" });
+        await recordAgentOsEvent(agentOsEvent("AFFARERADAR_VERIFICATION_MISS", queued.body, {
+          knowledgeStatus:"PARSED",
+          payload:{ dealId, asin }
+        }));
+        continue;
+      }
+
+      const merged = mergeVerifiedAmazonData(queued.body, verifiedDeal);
+      merged.verificationQueueDealId = dealId;
+      merged.verificationResolvedAt = new Date().toISOString();
+
+      const publish = await publishDeal(req, merged);
+      const resolved = publish.ok && publish.data?.decision !== "verify";
+
+      if (resolved) {
+        verified += 1;
+        await redisCommand("ZREM", "affareradar:verification:queue", dealId);
+        await redisCommand("DEL", `affareradar:verification:item:${dealId}`);
+        await redisCommand("INCR", "affareradar:metrics:verification_resolved");
+      }
+
+      await recordAgentOsEvent(agentOsEvent(
+        resolved ? "AFFARERADAR_VERIFIED" : "AFFARERADAR_VERIFICATION_RETRY",
+        merged,
+        {
+          knowledgeStatus:resolved ? "VERIFIED" : "PARSED",
+          payload:{ dealId, asin, publishDecision:publish.data?.decision || null }
+        }
+      ));
+
+      results.push({ dealId, asin, ok:resolved, publish });
+    } catch (error) {
+      results.push({ dealId, asin, ok:false, error:String(error?.message || error) });
+    }
+  }
+
+  return { processed:ids.length, verified, results };
+}
+
 async function publishDeal(req, deal) {
   const host = req.headers.host;
   if (!host) throw new Error("host_missing");
@@ -242,6 +327,7 @@ export default async function handler(req, res) {
 
   try {
     const token = await getAccessToken(cfg);
+    const verificationQueue = await processVerificationQueue(req, token, cfg);
     const queries = searchTerms();
     const discovered = [];
     const results = [];
@@ -292,6 +378,7 @@ export default async function handler(req, res) {
       queries,
       discovered:unique.length,
       submitted:results.length,
+      verificationQueue,
       results
     });
   } catch (error) {
