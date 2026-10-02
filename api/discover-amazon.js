@@ -2,6 +2,7 @@ import { amazonAgentUserAgent } from "../lib/amazon-compliance.js";
 import { mergeVerifiedAmazonData } from "../lib/amazon-verification-broker.js";
 import { agentOsEvent } from "../lib/agentos-adapter.js";
 import { offerDagTemplate, dagSummary } from "../lib/agentos-dag.js";
+import { extractAsinFromUrl } from "../lib/verification-orchestrator.js";
 
 const MARKETPLACE = "www.amazon.it";
 const TOKEN_ENDPOINT = "https://api.amazon.co.uk/auth/o2/token";
@@ -239,6 +240,62 @@ async function createAgentOsDagForVerifiedDeal(deal) {
   }
 }
 
+async function advanceAgentOsDag(req, dagId, merged) {
+  if (!dagId || !redisConfig()) return null;
+  try {
+    const dr = await redisCommand("GET", `affareradar:agentos:dag:${dagId}`);
+    if (!dr.result) return null;
+    const dag = JSON.parse(dr.result);
+    dag.offer = merged;
+    const verifyNode = (dag.nodes || []).find(node => node.name === "verify");
+    if (verifyNode) {
+      verifyNode.status = "COMPLETED";
+      verifyNode.attempts = Math.max(1, Number(verifyNode.attempts || 0));
+      verifyNode.completedAt = new Date().toISOString();
+      verifyNode.result = {
+        verified:true,
+        provider:merged.verificationProvider || merged.amazonDataSource || merged.priceSource || "creators_api"
+      };
+      verifyNode.lastError = null;
+    }
+    dag.updatedAt = new Date().toISOString();
+    await redisCommand("SET", `affareradar:agentos:dag:${dagId}`, JSON.stringify(dag), "EX", 604800);
+    await redisCommand("ZADD", "affareradar:agentos:dags", String(Date.now()), dagId);
+
+    const host = req.headers.host;
+    const secret = process.env.PUBLISH_SECRET;
+    if (!host || !secret) return { dagId, advanced:false, reason:"host_or_secret_missing" };
+    const protocol = String(req.headers["x-forwarded-proto"] || "https").split(",")[0].trim();
+    const endpoint = `${protocol}://${host}/api/dashboard`;
+    const headers = { "Content-Type":"application/json", "x-affareradar-secret":secret };
+    const steps = [];
+
+    for (let i = 0; i < 6; i++) {
+      const dagRes = await fetch(endpoint, {
+        method:"POST",
+        headers,
+        body:JSON.stringify({ action:"process_dag", dagId })
+      });
+      const dagData = await dagRes.json().catch(() => ({}));
+      steps.push({ action:"process_dag", ok:dagRes.ok, status:dagData?.dag?.status || dagData?.summary?.status || null });
+      if (!dagRes.ok || ["COMPLETED","FAILED","WAIT_APPROVAL"].includes(String(dagData?.dag?.status || ""))) break;
+
+      const taskRes = await fetch(endpoint, {
+        method:"POST",
+        headers,
+        body:JSON.stringify({ action:"process_tasks", limit:4 })
+      });
+      const taskData = await taskRes.json().catch(() => ({}));
+      steps.push({ action:"process_tasks", ok:taskRes.ok, processed:Number(taskData?.processed || 0) });
+      if (!taskRes.ok || Number(taskData?.processed || 0) === 0) break;
+    }
+
+    return { dagId, advanced:true, steps };
+  } catch (error) {
+    return { dagId, advanced:false, error:String(error?.message || error) };
+  }
+}
+
 async function processVerificationQueue(req, token, cfg) {
   if (!redisConfig()) return { processed:0, verified:0, results:[] };
 
@@ -262,7 +319,13 @@ async function processVerificationQueue(req, token, cfg) {
       continue;
     }
 
-    const asin = String(queued.plan?.asin || queued.body.asin || "").trim().toUpperCase();
+    const asin = String(
+      queued.plan?.asin ||
+      queued.body.asin ||
+      queued.body.signalClaims?.asinCandidate ||
+      extractAsinFromUrl(queued.body.amazonUrl || "") ||
+      ""
+    ).trim().toUpperCase();
     if (!asin) {
       results.push({ dealId, ok:false, error:"asin_missing" });
       continue;
@@ -285,8 +348,20 @@ async function processVerificationQueue(req, token, cfg) {
       const merged = mergeVerifiedAmazonData(queued.body, verifiedDeal);
       merged.verificationQueueDealId = dealId;
       merged.verificationResolvedAt = new Date().toISOString();
+      merged.verificationProvider = "creators_api";
 
-      const publish = await publishDeal(req, merged);
+      let publish;
+      let dagAdvance = null;
+      if (queued.dagId) {
+        dagAdvance = await advanceAgentOsDag(req, queued.dagId, merged);
+        publish = {
+          ok:Boolean(dagAdvance?.advanced),
+          status:dagAdvance?.advanced ? 200 : 502,
+          data:{ ok:Boolean(dagAdvance?.advanced), decision:"dag_advanced", dagAdvance }
+        };
+      } else {
+        publish = await publishDeal(req, merged);
+      }
       const resolved = publish.ok && publish.data?.decision !== "verify";
 
       if (resolved) {
@@ -294,6 +369,10 @@ async function processVerificationQueue(req, token, cfg) {
         await redisCommand("ZREM", "affareradar:verification:queue", dealId);
         await redisCommand("DEL", `affareradar:verification:item:${dealId}`);
         await redisCommand("INCR", "affareradar:metrics:verification_resolved");
+        if (queued.quarantineId) {
+          await redisCommand("ZREM", "affareradar:quarantine:queue", queued.quarantineId);
+          await redisCommand("DEL", `affareradar:quarantine:${queued.quarantineId}`);
+        }
       }
 
       await recordAgentOsEvent(agentOsEvent(
