@@ -434,6 +434,55 @@ async function advanceAgentOsDag(req, dagId, merged) {
   }
 }
 
+async function completeExternalVerificationTask(req, taskId, merged, provider) {
+  if (!taskId || !redisConfig()) return null;
+  try {
+    const key = `affareradar:agentos:task:${taskId}`;
+    const rr = await redisCommand("GET", key);
+    if (!rr.result) return null;
+    const task = JSON.parse(rr.result);
+    const dagId = task.context?.dagId || task.payload?.dagId || null;
+    const updated = {
+      ...task,
+      status:"COMPLETED",
+      result:{ ok:true, action:"VERIFICATION_RESOLVED", provider, asin:merged.asin || null },
+      completedAt:new Date().toISOString(),
+      updatedAt:new Date().toISOString()
+    };
+    await redisCommand("SET", key, JSON.stringify(updated), "EX", 604800);
+
+    if (dagId) {
+      const dr = await redisCommand("GET", `affareradar:agentos:dag:${dagId}`);
+      if (dr.result) {
+        try {
+          const dag = JSON.parse(dr.result);
+          dag.offer = merged;
+          dag.updatedAt = new Date().toISOString();
+          await redisCommand("SET", `affareradar:agentos:dag:${dagId}`, JSON.stringify(dag), "EX", 604800);
+          await redisCommand("ZADD", "affareradar:agentos:dags", String(Date.now()), dagId);
+        } catch {}
+      }
+
+      const host = req.headers.host;
+      const secret = process.env.PUBLISH_SECRET;
+      if (host && secret) {
+        const protocol = String(req.headers["x-forwarded-proto"] || "https").split(",")[0].trim();
+        try {
+          await fetch(`${protocol}://${host}/api/dashboard`, {
+            method:"POST",
+            headers:{ "Content-Type":"application/json", "x-affareradar-secret":secret },
+            body:JSON.stringify({ action:"process_dag", dagId })
+          });
+        } catch {}
+      }
+    }
+
+    return { taskId, dagId, status:"COMPLETED" };
+  } catch {
+    return null;
+  }
+}
+
 async function updateSourceVerificationOutcome(body, outcome = {}) {
   if (!redisConfig() || !body?.source) return;
   try {
@@ -554,7 +603,15 @@ async function processVerificationQueue(req, token, cfg, paCfg) {
 
       let publish;
       let dagAdvance = null;
-      if (queued.dagId) {
+      let taskCompletion = null;
+      if (queued.agentOsTaskId) {
+        taskCompletion = await completeExternalVerificationTask(req, queued.agentOsTaskId, merged, provider);
+        publish = {
+          ok:Boolean(taskCompletion),
+          status:taskCompletion ? 200 : 502,
+          data:{ ok:Boolean(taskCompletion), decision:"agentos_task_completed", taskCompletion }
+        };
+      } else if (queued.dagId) {
         dagAdvance = await advanceAgentOsDag(req, queued.dagId, merged);
         publish = {
           ok:Boolean(dagAdvance?.advanced),
@@ -591,7 +648,7 @@ async function processVerificationQueue(req, token, cfg, paCfg) {
         }
       ));
 
-      results.push({ dealId, asin, ok:resolved, provider, attempts, publish });
+      results.push({ dealId, asin, ok:resolved, provider, attempts, publish, taskCompletion });
     } catch (error) {
       results.push({ dealId, asin, ok:false, error:String(error?.message || error) });
     }
