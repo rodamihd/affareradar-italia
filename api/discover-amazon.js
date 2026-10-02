@@ -451,33 +451,12 @@ async function completeExternalVerificationTask(req, taskId, merged, provider) {
     };
     await redisCommand("SET", key, JSON.stringify(updated), "EX", 604800);
 
+    let dagAdvance = null;
     if (dagId) {
-      const dr = await redisCommand("GET", `affareradar:agentos:dag:${dagId}`);
-      if (dr.result) {
-        try {
-          const dag = JSON.parse(dr.result);
-          dag.offer = merged;
-          dag.updatedAt = new Date().toISOString();
-          await redisCommand("SET", `affareradar:agentos:dag:${dagId}`, JSON.stringify(dag), "EX", 604800);
-          await redisCommand("ZADD", "affareradar:agentos:dags", String(Date.now()), dagId);
-        } catch {}
-      }
-
-      const host = req.headers.host;
-      const secret = process.env.PUBLISH_SECRET;
-      if (host && secret) {
-        const protocol = String(req.headers["x-forwarded-proto"] || "https").split(",")[0].trim();
-        try {
-          await fetch(`${protocol}://${host}/api/dashboard`, {
-            method:"POST",
-            headers:{ "Content-Type":"application/json", "x-affareradar-secret":secret },
-            body:JSON.stringify({ action:"process_dag", dagId })
-          });
-        } catch {}
-      }
+      dagAdvance = await advanceAgentOsDag(req, dagId, merged);
     }
 
-    return { taskId, dagId, status:"COMPLETED" };
+    return { taskId, dagId, status:"COMPLETED", dagAdvance };
   } catch {
     return null;
   }
@@ -740,14 +719,30 @@ export default async function handler(req, res) {
     const maxCandidates = Math.max(1, Math.min(10, Number(process.env.AMAZON_DISCOVERY_MAX_CANDIDATES || 5)));
     for (const deal of unique.slice(0, maxCandidates)) {
       const dag = await createAgentOsDagForVerifiedDeal(deal);
-      const publish = await publishDeal(req, deal);
+      const agentOsAdvance = dag
+        ? await advanceAgentOsDag(req, dag.dagId, deal)
+        : { advanced:false, reason:"agentos_dag_unavailable" };
+
       results.push({
         asin:deal.asin,
         title:deal.title,
         dealScore:deal.dealScore,
         discount:deal.discount,
         dag:dag ? { dagId:dag.dagId, status:dag.status } : null,
-        publish
+        orchestration:{
+          mode:"agentos_authoritative",
+          advanced:agentOsAdvance?.advanced === true,
+          detail:agentOsAdvance
+        },
+        publish:{
+          ok:agentOsAdvance?.advanced === true,
+          status:agentOsAdvance?.advanced === true ? 200 : 503,
+          data:{
+            ok:agentOsAdvance?.advanced === true,
+            published:null,
+            decision:agentOsAdvance?.advanced === true ? "agentos_dag_advanced" : "agentos_orchestration_unavailable"
+          }
+        }
       });
     }
 
