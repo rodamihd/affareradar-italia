@@ -61,6 +61,42 @@ function rank(events) {
   }).selected;
 }
 
+async function tickAgentOsDags(req) {
+  const host = req.headers.host;
+  const secret = process.env.PUBLISH_SECRET;
+  if (!host || !secret) return { recovered:null, processed:null };
+
+  const protocol = String(req.headers["x-forwarded-proto"] || "https").split(",")[0].trim();
+  const endpoint = `${protocol}://${host}/api/dashboard`;
+  const headers = {
+    "Content-Type":"application/json",
+    "x-affareradar-secret":secret
+  };
+
+  let recovered = null;
+  let processed = null;
+
+  try {
+    const rr = await fetch(endpoint, {
+      method:"POST",
+      headers,
+      body:JSON.stringify({ action:"recover_dags", limit:5 })
+    });
+    recovered = await rr.json().catch(() => null);
+  } catch {}
+
+  try {
+    const pr = await fetch(endpoint, {
+      method:"POST",
+      headers,
+      body:JSON.stringify({ action:"process_tasks", limit:5 })
+    });
+    processed = await pr.json().catch(() => null);
+  } catch {}
+
+  return { recovered, processed };
+}
+
 async function refreshPublishedLifecycles(events) {
   const seen = new Set();
   let changed = 0;
@@ -131,6 +167,7 @@ export default async function handler(req, res) {
     return Number.isFinite(ts) && ts >= since;
   });
 
+  const agentOsDagTick = await tickAgentOsDags(req);
   const lifecycleChanges = await refreshPublishedLifecycles(events);
   const picks = rank(recent);
   if (!picks.length) {
@@ -191,6 +228,7 @@ export default async function handler(req, res) {
     published:true,
     count:picks.length,
     lifecycleChanges,
+    agentOsDagTick,
     telegram_message_id:data.result?.message_id || null
   });
 }
