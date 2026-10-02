@@ -8,6 +8,7 @@ import { providerHealthDefaults, providerCanAttempt, recordProviderSuccessState,
 import crypto from "node:crypto";
 import { startRuntimeObservation, runtimeSuccess, runtimeFailure } from "../lib/runtime-observability.js";
 import { redisConfig, redisCommand } from "../lib/redis-rest.js";
+import { runAgentOsSelfTest } from "../lib/agentos-selftest.js";
 
 const MARKETPLACE = "www.amazon.it";
 const TOKEN_ENDPOINT = "https://api.amazon.co.uk/auth/o2/token";
@@ -662,6 +663,16 @@ export default async function handler(req, res) {
   }
   if (!authorized(req)) {
     return res.status(401).json({ ok:false, error:"unauthorized" });
+  }
+
+  const preflight = runAgentOsSelfTest();
+  if (!preflight.passed) {
+    runtimeFailure(__obs, new Error("agentos_preflight_failed"), { failedTests:preflight.failedCount });
+    return res.status(503).json({
+      ok:false,
+      error:"agentos_preflight_failed",
+      selfTest:{ total:preflight.total, failedCount:preflight.failedCount, failed:preflight.failed }
+    });
   }
 
   const cfg = creatorsConfig();
