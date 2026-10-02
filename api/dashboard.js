@@ -385,7 +385,10 @@ export default async function handler(req, res) {
       "verification_required",
       "opportunity_not_publishable",
       "safe_mode_blocked",
-      "verification_resolved"
+      "verification_resolved",
+      "agentos_control_blocked",
+      "agentos_task_completed",
+      "agentos_task_failed"
     ];
 
     const metricResults = await Promise.all(
