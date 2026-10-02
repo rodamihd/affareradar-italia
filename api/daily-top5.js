@@ -1,3 +1,4 @@
+import { optimizePortfolio } from "../lib/portfolio-optimizer.js";
 function redisConfig() {
   const url = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
@@ -38,7 +39,7 @@ function esc(s) {
 
 function rank(events) {
   const seen = new Set();
-  return events
+  const candidates = events
     .filter(e => e && (e.event === "published" || e.event === "manual_published"))
     .filter(e => {
       const key = e.asin || e.dealId || e.amazonUrl || e.title;
@@ -46,12 +47,16 @@ function rank(events) {
       seen.add(key);
       return true;
     })
-    .sort((a,b) => {
-      const as = Number(a.dealScore || 0) + (a.dealType === "price_error" ? 4 : 0) + (a.dealType === "coupon_stack" ? 2 : 0);
-      const bs = Number(b.dealScore || 0) + (b.dealType === "price_error" ? 4 : 0) + (b.dealType === "coupon_stack" ? 2 : 0);
-      return bs - as;
-    })
-    .slice(0,5);
+    .map(e => ({
+      ...e,
+      reward:e.reward || (e.dealType === "reward" ? { isReward:true } : null)
+    }));
+
+  return optimizePortfolio(candidates, {
+    maxItems:5,
+    maxPerCategory:2,
+    maxRewards:1
+  }).selected;
 }
 
 export default async function handler(req, res) {
@@ -97,7 +102,11 @@ export default async function handler(req, res) {
       return [
         `<b>${i+1}. ${esc(e.title || e.asin || e.dealId || "Offerta")}</b>`,
         price ? `💶 ${esc(price)}` : null,
-        Number.isFinite(Number(e.dealScore)) ? `🎯 Deal Score: <b>${Number(e.dealScore)}/100</b>` : null,
+        Number.isFinite(Number(e.opportunity?.score)) ? `🧠 Opportunity: <b>${Number(e.opportunity.score)}/100</b>` :
+          (Number.isFinite(Number(e.dealScore)) ? `🎯 Deal Score: <b>${Number(e.dealScore)}/100</b>` : null),
+        Number.isFinite(Number(e.revenue?.expectedRevenuePer1000ImpressionsEUR))
+          ? `📈 EV stimato/1000: €${Number(e.revenue.expectedRevenuePer1000ImpressionsEUR).toFixed(2)}`
+          : null,
         e.discount ? `📉 ${esc(e.discount)}` : null,
         e.amazonUrl ? `🔗 <a href="${esc(e.amazonUrl)}">Vedi offerta</a>` : null,
         ""
