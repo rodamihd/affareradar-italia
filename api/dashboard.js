@@ -212,7 +212,7 @@ async function executeAgentOsTask(req, record) {
     const plan = {
       asin:target.asin || null,
       currentState:"SIGNAL_ONLY",
-      attempts:["creators_api","amazon_link_tool_manual"],
+      attempts:["creators_api","pa_api","amazon_link_tool_manual"],
       requestedBy:"AgentOS",
       taskId:task.taskId
     };
@@ -893,6 +893,7 @@ export default async function handler(req, res) {
       agentOsDagRecovery:true,
       agentOsAsyncTaskSemantics:true,
       agentOsTimeoutEnforcement:true,
+      verificationWorkerWakeup:true,
       agentOsSelfTest:true,
       sharedRedisAdapter:true,
       agentOs17_5Profile:true,

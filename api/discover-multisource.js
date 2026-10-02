@@ -393,6 +393,39 @@ async function enqueueSignalVerification(deal, dag) {
   return { queued:true, dealId, dagId:dag?.dagId || null, plan };
 }
 
+async function wakeVerificationWorker(req) {
+  const host = req.headers.host;
+  const secret = process.env.PUBLISH_SECRET;
+  if (!host || !secret) return { triggered:false, reason:"host_or_secret_missing" };
+  const protocol = String(req.headers["x-forwarded-proto"] || "https").split(",")[0].trim();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 45000);
+  try {
+    const response = await fetch(`${protocol}://${host}/api/discover-amazon`, {
+      method:"POST",
+      headers:{
+        "Content-Type":"application/json",
+        "x-affareradar-secret":secret
+      },
+      body:JSON.stringify({ verificationOnly:true }),
+      signal:controller.signal
+    });
+    const data = await response.json().catch(() => ({}));
+    return {
+      triggered:true,
+      ok:response.ok && data.ok !== false,
+      status:response.status,
+      processed:Number(data?.verificationQueue?.processed || 0),
+      verified:Number(data?.verificationQueue?.verified || 0),
+      providers:data?.providers || null
+    };
+  } catch (error) {
+    return { triggered:true, ok:false, error:String(error?.name === "AbortError" ? "verification_worker_timeout" : error?.message || error) };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function submit(req, deal) {
   const host = req.headers.host;
   if (!host) throw new Error("host_missing");
@@ -532,6 +565,10 @@ export default async function handler(req, res) {
     });
   }
 
+  const verificationWakeup = results.some(row => row?.publish?.data?.decision === "verify")
+    ? await wakeVerificationWorker(req)
+    : { triggered:false, reason:"no_verification_work" };
+
   try {
     if (redisConfig()) {
       await Promise.all([
@@ -548,6 +585,7 @@ export default async function handler(req, res) {
     sources:sourceResults,
     candidates:unique.length,
     submitted:results.length,
+    verificationWakeup,
     results
   });
 }
