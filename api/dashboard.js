@@ -37,6 +37,7 @@ export default async function handler(req, res) {
   }
 
   const cfg = redisConfig();
+  let storefrontCandidates = [];
 
   let telegramHealth = null;
   try {
@@ -51,7 +52,7 @@ export default async function handler(req, res) {
   if (!cfg) {
     const storefrontIdsResult = await redisCommand("ZREVRANGE", "affareradar:storefront:candidates", 0, 7, "WITHSCORES");
     const storefrontPairs = Array.isArray(storefrontIdsResult.result) ? storefrontIdsResult.result : [];
-    const storefrontCandidates = [];
+    storefrontCandidates = [];
     for (let i = 0; i < storefrontPairs.length; i += 2) {
       const dealId = storefrontPairs[i];
       const score = Number(storefrontPairs[i + 1] || 0);
@@ -92,7 +93,8 @@ export default async function handler(req, res) {
       "product_excluded_blocked",
       "policy_blocked",
       "verification_required",
-      "opportunity_not_publishable"
+      "opportunity_not_publishable",
+      "safe_mode_blocked"
     ];
 
     const metricResults = await Promise.all(
@@ -112,7 +114,8 @@ export default async function handler(req, res) {
       lastDiscoveryCountResult,
       multisourceLastRunResult,
       multisourceCandidateCountResult,
-      multisourceSourceCountResult
+      multisourceSourceCountResult,
+      verificationQueueCountResult
     ] = await Promise.all([
       redisCommand("ZCARD", "affareradar:queue"),
       redisCommand("LRANGE", "affareradar:events", 0, 49),
@@ -121,7 +124,8 @@ export default async function handler(req, res) {
       redisCommand("GET", "affareradar:amazon:last_discovery_count"),
       redisCommand("GET", "affareradar:multisource:last_run_at"),
       redisCommand("GET", "affareradar:multisource:last_candidate_count"),
-      redisCommand("GET", "affareradar:multisource:last_source_count")
+      redisCommand("GET", "affareradar:multisource:last_source_count"),
+      redisCommand("ZCARD", "affareradar:verification:queue")
     ]);
 
     const events = Array.isArray(eventsResult.result)
@@ -171,6 +175,22 @@ export default async function handler(req, res) {
       }
     }
 
+    try {
+      const storefrontIdsResult = await redisCommand("ZREVRANGE", "affareradar:storefront:candidates", 0, 7, "WITHSCORES");
+      const storefrontPairs = Array.isArray(storefrontIdsResult.result) ? storefrontIdsResult.result : [];
+      storefrontCandidates = [];
+      for (let i = 0; i < storefrontPairs.length; i += 2) {
+        const dealId = storefrontPairs[i];
+        const score = Number(storefrontPairs[i + 1] || 0);
+        const rr = await redisCommand("GET", `affareradar:storefront:candidate:${dealId}`);
+        if (!rr.result) continue;
+        try {
+          const item = JSON.parse(rr.result);
+          storefrontCandidates.push({ ...item, score });
+        } catch {}
+      }
+    } catch {}
+
     const modules = {
       telegram:Boolean(telegramHealth?.targetReachable && telegramHealth?.botCanPost),
       redis:true,
@@ -206,6 +226,10 @@ export default async function handler(req, res) {
       opportunityEngineV2:true,
       policyAsCodeEngine:true,
       sourceReputationEngine:true,
+      outcomeLearningEngine:true,
+      expectedRevenueEngine:true,
+      verificationOrchestrator:true,
+      safeModeController:true,
       complianceEvidenceVault:true,
       authorizedTrafficSources:Boolean(process.env.AMAZON_ASSOCIATES_APPROVED_CHANNELS)
     };
@@ -229,7 +253,9 @@ export default async function handler(req, res) {
         lastCandidateCount:multisourceCandidateCountResult.result ? Number(multisourceCandidateCountResult.result) : null,
         lastSourceCount:multisourceSourceCountResult.result ? Number(multisourceSourceCountResult.result) : null
       },
-      storefrontCandidates,
+      verificationQueueCount:Number(verificationQueueCountResult.result || 0),
+      systemMode:String(process.env.AFFARERADAR_SYSTEM_MODE || "AUTO").toUpperCase(),
+      storefrontCandidates:typeof storefrontCandidates !== "undefined" ? storefrontCandidates : [],
       events,
       telegramHealth
     });
