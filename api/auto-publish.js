@@ -8,7 +8,7 @@ import { sanitizeForAmazonPublication } from "../lib/amazon-compliance.js";
 import { evaluateAmazonVerification } from "../lib/amazon-verification-broker.js";
 import { opportunityScoreV2 } from "../lib/opportunity-engine-v2.js";
 import { evaluatePolicies } from "../lib/policy-engine.js";
-import { computeSourceReputation, initialSourceReputation, sourceKey } from "../lib/source-reputation.js";
+import { computeSourceReputation, initialSourceReputation, sourceReputationKeys } from "../lib/source-reputation.js";
 import { learnedOutcomeProfile, mergeLearnedSignals, outcomeDimensions, mergeOutcomeStats } from "../lib/outcome-learning.js";
 import { expectedRevenue } from "../lib/expected-revenue-engine.js";
 import { verificationPlan } from "../lib/verification-orchestrator.js";
@@ -400,11 +400,16 @@ async function readSourceReputation(body) {
   const base = initialSourceReputation(body);
   if (!redisConfig()) return base;
   try {
-    const key = sourceKey(body);
-    const rr = await redisCommand("GET", `affareradar:source:stats:${key}`);
-    if (!rr.result) return base;
-    const stats = JSON.parse(rr.result);
-    return computeSourceReputation(stats, body);
+    const rows = [];
+    for (const dimension of sourceReputationKeys(body)) {
+      const rr = await redisCommand("GET", `affareradar:source:stats:${dimension.suffix}`);
+      if (!rr.result) continue;
+      try {
+        rows.push({ dimension:dimension.dimension, stats:JSON.parse(rr.result) });
+      } catch {}
+    }
+    if (!rows.length) return base;
+    return computeSourceReputation(rows, body);
   } catch {
     return base;
   }
