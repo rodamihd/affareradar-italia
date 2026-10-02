@@ -682,6 +682,7 @@ export default async function handler(req, res) {
       "rejected_below_threshold",
       "publish_failed",
       "attribution_click",
+      "tracked_engagement",
       "rejected_creator_quality",
       "republish_blocked",
       "reward_validation_failed",
@@ -899,7 +900,6 @@ export default async function handler(req, res) {
       authorizedTrafficSources:Boolean(process.env.AMAZON_ASSOCIATES_APPROVED_CHANNELS)
     };
 
-    runtimeSuccess(__obs, { redisConfigured:true, queueCount:Number(queueCountResult.result || 0), verificationQueueCount:Number(verificationQueueCountResult.result || 0) });
     runtimeSuccess(__obs, { redisConfigured:true, queueCount:Number(queueCountResult.result || 0), verificationQueueCount:Number(verificationQueueCountResult.result || 0) });
     return res.status(200).json({
       ok:true,
