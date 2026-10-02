@@ -7,7 +7,10 @@ import {
   taskRegistry
 } from "../lib/agentos-control-plane.js";
 import { universalEntityId, agentOsEvent } from "../lib/agentos-adapter.js";
-import { outcomeDimensions } from "../lib/outcome-learning.js";
+import { outcomeDimensions, learnedOutcomeProfile, mergeOutcomeStats } from "../lib/outcome-learning.js";
+import { sourceReputationKeys, computeSourceReputation, initialSourceReputation } from "../lib/source-reputation.js";
+import { evaluateOfferDeterministic } from "../lib/domain-evaluator.js";
+import { optimizePortfolio } from "../lib/portfolio-optimizer.js";
 import {
   offerDagTemplate,
   readyDagNodes,
@@ -111,6 +114,35 @@ async function recordOutcomeBatch(items = []) {
     failed,
     results
   };
+}
+
+async function taskLearningContext(body = {}) {
+  let outcomeProfile = learnedOutcomeProfile({}, body);
+  let sourceReputation = initialSourceReputation(body);
+
+  if (!redisConfig()) return { outcomeProfile, sourceReputation };
+
+  try {
+    const rows = [];
+    for (const dimension of outcomeDimensions(body)) {
+      const rr = await redisCommand("GET", `affareradar:outcome:${dimension}`);
+      if (!rr.result) continue;
+      try { rows.push(JSON.parse(rr.result)); } catch {}
+    }
+    outcomeProfile = learnedOutcomeProfile(mergeOutcomeStats(rows), body);
+  } catch {}
+
+  try {
+    const rows = [];
+    for (const dimension of sourceReputationKeys(body)) {
+      const rr = await redisCommand("GET", `affareradar:source:stats:${dimension.suffix}`);
+      if (!rr.result) continue;
+      try { rows.push({ dimension:dimension.dimension, stats:JSON.parse(rr.result) }); } catch {}
+    }
+    if (rows.length) sourceReputation = computeSourceReputation(rows, body);
+  } catch {}
+
+  return { outcomeProfile, sourceReputation };
 }
 
 async function emitAgentOsEvent(event) {
@@ -263,27 +295,90 @@ async function executeAgentOsTask(req, record) {
     return { ok:true, action:"DISCOVERY_REQUESTED_FOR_NEXT_CYCLE" };
   }
 
-  if (task.taskType === "OPTIMIZE_PORTFOLIO") {
-    await redisCommand("SET", "affareradar:agentos:portfolio_optimize_requested_at", new Date().toISOString(), "EX", 86400);
-    return { ok:true, action:"PORTFOLIO_OPTIMIZATION_REQUESTED" };
+  if (task.taskType === "EVALUATE_OFFER") {
+    const learning = await taskLearningContext(body);
+    const evaluation = evaluateOfferDeterministic(body, learning);
+    const record = {
+      entityId,
+      taskId:task.taskId,
+      evaluatedAt:new Date().toISOString(),
+      offer:body,
+      evaluation
+    };
+    await redisCommand("SET", `affareradar:agentos:evaluate:${entityId}`, JSON.stringify(record), "EX", 86400);
+    await redisCommand("ZADD", "affareradar:agentos:evaluated", String(Date.now()), entityId);
+    return {
+      ok:true,
+      action:"EVALUATED",
+      entityId,
+      decision:evaluation.action,
+      opportunity:evaluation.opportunity,
+      revenue:evaluation.revenue,
+      policyDecision:evaluation.policy.decision,
+      egress:evaluation.egress
+    };
   }
 
-  if (task.taskType === "EVALUATE_OFFER") {
-    await redisCommand("SET", `affareradar:agentos:evaluate:${entityId}`, JSON.stringify({
-      requestedAt:new Date().toISOString(),
+  if (task.taskType === "OPTIMIZE_PORTFOLIO") {
+    const rr = await redisCommand("ZREVRANGE", "affareradar:agentos:evaluated", 0, 19);
+    const ids = Array.isArray(rr.result) ? rr.result : [];
+    const candidates = [];
+    for (const id of ids) {
+      const er = await redisCommand("GET", `affareradar:agentos:evaluate:${id}`);
+      if (!er.result) continue;
+      try {
+        const row = JSON.parse(er.result);
+        if (!row?.offer || !row?.evaluation) continue;
+        if (!["PUBLISH","OBSERVE"].includes(String(row.evaluation.action || ""))) continue;
+        candidates.push({
+          ...row.offer,
+          entityId:row.entityId,
+          opportunity:row.evaluation.opportunity,
+          revenue:row.evaluation.revenue
+        });
+      } catch {}
+    }
+    const currentEvaluationResult = await redisCommand("GET", `affareradar:agentos:evaluate:${entityId}`);
+    if (currentEvaluationResult.result && !candidates.some(x => x.entityId === entityId)) {
+      try {
+        const row = JSON.parse(currentEvaluationResult.result);
+        candidates.push({
+          ...body,
+          entityId,
+          opportunity:row.evaluation?.opportunity,
+          revenue:row.evaluation?.revenue
+        });
+      } catch {}
+    }
+    const optimized = optimizePortfolio(candidates, {
+      maxItems:Number(process.env.AGENTOS_PORTFOLIO_WINDOW_MAX || 5),
+      maxPerCategory:Number(process.env.AGENTOS_PORTFOLIO_MAX_PER_CATEGORY || 2),
+      maxRewards:Number(process.env.AGENTOS_PORTFOLIO_MAX_REWARDS || 1)
+    });
+    const selected = optimized.selected.some(x => x.entityId === entityId);
+    const record = {
+      entityId,
       taskId:task.taskId,
-      offer:body
-    }), "EX", 86400);
-    return { ok:true, action:"EVALUATION_CHECKPOINT_RECORDED", entityId };
+      optimizedAt:new Date().toISOString(),
+      selected,
+      diagnostics:optimized.diagnostics,
+      selectedEntities:optimized.selected.map(x => x.entityId).filter(Boolean)
+    };
+    await redisCommand("SET", `affareradar:agentos:portfolio:${entityId}`, JSON.stringify(record), "EX", 86400);
+    return { ok:true, action:selected ? "PORTFOLIO_SELECTED" : "PORTFOLIO_SKIPPED", entityId, selected, diagnostics:optimized.diagnostics };
   }
 
   if (task.taskType === "LEARN_OUTCOME") {
-    await redisCommand("SET", `affareradar:agentos:learn:${entityId}`, JSON.stringify({
-      requestedAt:new Date().toISOString(),
+    const learning = await taskLearningContext(body);
+    const snapshot = {
+      learnedAt:new Date().toISOString(),
       taskId:task.taskId,
-      offer:body
-    }), "EX", 604800);
-    return { ok:true, action:"LEARNING_CHECKPOINT_RECORDED", entityId };
+      entityId,
+      outcomeProfile:learning.outcomeProfile,
+      sourceReputation:learning.sourceReputation
+    };
+    await redisCommand("SET", `affareradar:agentos:learn:${entityId}`, JSON.stringify(snapshot), "EX", 604800);
+    return { ok:true, action:"OUTCOME_LEARNED", entityId, outcomeProfile:learning.outcomeProfile, sourceReputation:learning.sourceReputation };
   }
 
   if (task.taskType === "CAPTURE_SIGNAL") {
@@ -457,6 +552,19 @@ async function processAgentOsDag(req, dagId) {
     reconciled.push(await reconcileDagNode(dag, node, now));
   }
   dag = { ...dag, nodes:reconciled };
+
+  const portfolioNode = (dag.nodes || []).find(n => n.name === "portfolio");
+  if (portfolioNode?.status === "COMPLETED" && portfolioNode?.result?.selected === false) {
+    for (const name of ["publish","recheck","learn"]) {
+      const node = dag.nodes.find(n => n.name === name);
+      if (!node || ["COMPLETED","SKIPPED"].includes(node.status)) continue;
+      node.status = "SKIPPED";
+      node.completedAt = new Date(now).toISOString();
+      node.result = { skipped:true, reason:"portfolio_not_selected" };
+      node.lastError = null;
+      node.taskId = null;
+    }
+  }
 
   if (dag.status === "FAILED" || dag.status === "COMPLETED") {
     dag = refreshDagStatus(dag, now);
@@ -893,6 +1001,9 @@ export default async function handler(req, res) {
       agentOsDagRecovery:true,
       agentOsAsyncTaskSemantics:true,
       agentOsTimeoutEnforcement:true,
+      agentOsDeterministicEvaluation:true,
+      agentOsPortfolioExecution:true,
+      agentOsOutcomeLearningExecution:true,
       verificationWorkerWakeup:true,
       agentOsSelfTest:true,
       sharedRedisAdapter:true,
