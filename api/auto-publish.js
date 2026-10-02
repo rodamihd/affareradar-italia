@@ -9,7 +9,7 @@ import { evaluateAmazonVerification } from "../lib/amazon-verification-broker.js
 import { opportunityScoreV2 } from "../lib/opportunity-engine-v2.js";
 import { evaluatePolicies } from "../lib/policy-engine.js";
 import { computeSourceReputation, initialSourceReputation, sourceKey } from "../lib/source-reputation.js";
-import { learnedOutcomeProfile, mergeLearnedSignals } from "../lib/outcome-learning.js";
+import { learnedOutcomeProfile, mergeLearnedSignals, outcomeDimensions, mergeOutcomeStats } from "../lib/outcome-learning.js";
 import { expectedRevenue } from "../lib/expected-revenue-engine.js";
 import { verificationPlan } from "../lib/verification-orchestrator.js";
 import { systemMode } from "../lib/safe-mode-controller.js";
@@ -473,12 +473,16 @@ async function persistKnowledgeProposal(body, knowledge, extra = {}) {
 }
 
 async function readOutcomeProfile(body) {
-  const category = normalizeCategory(body.category);
   let stats = {};
   if (redisConfig()) {
     try {
-      const rr = await redisCommand("GET", `affareradar:outcome:category:${category}`);
-      if (rr.result) stats = JSON.parse(rr.result);
+      const rows = [];
+      for (const dimension of outcomeDimensions(body)) {
+        const rr = await redisCommand("GET", `affareradar:outcome:${dimension}`);
+        if (!rr.result) continue;
+        try { rows.push(JSON.parse(rr.result)); } catch {}
+      }
+      stats = mergeOutcomeStats(rows);
     } catch {}
   }
   return learnedOutcomeProfile(stats, body);
@@ -486,18 +490,22 @@ async function readOutcomeProfile(body) {
 
 async function recordOutcomePublish(body, success = true) {
   if (!redisConfig()) return;
-  const category = normalizeCategory(body.category);
-  const key = `affareradar:outcome:category:${category}`;
   try {
-    const rr = await redisCommand("GET", key);
-    let stats = { impressions:0, clicks:0, conversions:0, engagements:0, publishes:0, successfulPublishes:0 };
-    if (rr.result) {
-      try { stats = { ...stats, ...JSON.parse(rr.result) }; } catch {}
+    for (const dimension of outcomeDimensions(body)) {
+      const key = `affareradar:outcome:${dimension}`;
+      const rr = await redisCommand("GET", key);
+      let stats = {
+        impressions:0, clicks:0, conversions:0, engagements:0,
+        publishes:0, successfulPublishes:0, revenueEUR:0
+      };
+      if (rr.result) {
+        try { stats = { ...stats, ...JSON.parse(rr.result) }; } catch {}
+      }
+      stats.publishes += 1;
+      if (success) stats.successfulPublishes += 1;
+      stats.lastUpdatedAt = nowIso();
+      await redisCommand("SET", key, JSON.stringify(stats), "EX", 7776000);
     }
-    stats.publishes += 1;
-    if (success) stats.successfulPublishes += 1;
-    stats.lastUpdatedAt = nowIso();
-    await redisCommand("SET", key, JSON.stringify(stats), "EX", 7776000);
   } catch {}
 }
 
