@@ -669,6 +669,7 @@ export default async function handler(req, res) {
     } catch {}
 
     runtimeSuccess(__obs, { discovered:unique.length, submitted:results.length, verificationProcessed:verificationQueue.processed || 0 });
+    runtimeSuccess(__obs, { discovered:unique.length, submitted:results.length, verificationProcessed:Number(verificationQueue?.processed || 0) });
     return res.status(200).json({
       ok:true,
       source:cfg ? "amazon_creators_api" : "amazon_verification_only",
