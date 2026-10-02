@@ -13,7 +13,7 @@ import { learnedOutcomeProfile, mergeLearnedSignals } from "../lib/outcome-learn
 import { expectedRevenue } from "../lib/expected-revenue-engine.js";
 import { verificationPlan } from "../lib/verification-orchestrator.js";
 import { systemMode } from "../lib/safe-mode-controller.js";
-import { agentOsEvent, agentOsRoutingDecision } from "../lib/agentos-adapter.js";
+import { agentOsEvent, agentOsRoutingDecision, universalEntityId } from "../lib/agentos-adapter.js";
 import { buildOfferLifecycle } from "../lib/offer-lifecycle.js";
 import crypto from "node:crypto";
 
@@ -414,6 +414,19 @@ async function recordAgentOsEvent(type, body, extra = {}) {
   }
 }
 
+async function readAgentOsEntityControl(body) {
+  if (!redisConfig()) return { state:"NONE", configured:false };
+  try {
+    const entityId = universalEntityId(body);
+    const rr = await redisCommand("GET", `affareradar:agentos:entity:${entityId}:control`);
+    if (!rr.result) return { state:"NONE", configured:true, entityId };
+    const value = JSON.parse(rr.result);
+    return { configured:true, entityId, ...value };
+  } catch {
+    return { state:"UNKNOWN", configured:true };
+  }
+}
+
 async function readOutcomeProfile(body) {
   const category = normalizeCategory(body.category);
   let stats = {};
@@ -483,6 +496,24 @@ export default async function handler(req, res) {
   const outcomeProfile = await readOutcomeProfile(body);
   body = mergeLearnedSignals(body, outcomeProfile);
   const originality = evaluateOriginality(body);
+  const agentOsControl = await readAgentOsEntityControl(body);
+
+  if (["HOLD","ARCHIVED"].includes(String(agentOsControl.state || "").toUpperCase())) {
+    await recordAgentOsEvent("AFFARERADAR_AGENTOS_CONTROL_BLOCK", body, {
+      lifecycle:String(agentOsControl.state || "").toUpperCase(),
+      knowledgeStatus:String(agentOsControl.state || "").toUpperCase() === "ARCHIVED" ? "ARCHIVED" : "PARSED",
+      payload:{ agentOsControl }
+    });
+    await trackMetric("agentos_control_blocked", body, { agentOsControl });
+    return res.status(200).json({
+      ok:true,
+      published:false,
+      decision:"held",
+      reason:"agentos_entity_control",
+      lifecycle:String(agentOsControl.state || "").toUpperCase(),
+      agentOsControl
+    });
+  }
 
   if (!originality.passed) {
     await trackMetric("originality_blocked", body, { originality });
@@ -950,7 +981,8 @@ export default async function handler(req, res) {
     verifyPlan,
     mode,
     routing,
-    agentLifecycle
+    agentLifecycle,
+    agentOsControl
   });
 
   try {
@@ -971,6 +1003,7 @@ export default async function handler(req, res) {
         mode,
         routing,
         agentLifecycle,
+        agentOsControl,
         telegramMessageId:publishData.telegram_message_id
       });
       await redisCommand("SET", `affareradar:evidence:${evidence.evidenceId}`, JSON.stringify(evidence), "EX", 7776000);
@@ -1016,6 +1049,7 @@ export default async function handler(req, res) {
     verifyPlan,
     mode,
     routing,
-    agentLifecycle
+    agentLifecycle,
+    agentOsControl
   });
 }
