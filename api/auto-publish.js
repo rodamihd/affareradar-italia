@@ -25,6 +25,7 @@ import {
 } from "../lib/agentos-17_5-profile.js";
 import crypto from "node:crypto";
 import { startRuntimeObservation, runtimeSuccess, runtimeFailure } from "../lib/runtime-observability.js";
+import { redisConfig, redisCommand } from "../lib/redis-rest.js";
 
 const memory = globalThis.__affareRadarState || {
   published:new Map(),
@@ -55,30 +56,6 @@ function buildDealId(body) {
 
 function normalizeCategory(value) {
   return String(value || "other").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "other";
-}
-
-function redisConfig() {
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  return url && token ? { url:url.replace(/\/$/, ""), token } : null;
-}
-
-async function redisCommand(command, ...args) {
-  const cfg = redisConfig();
-  if (!cfg) return { configured:false, result:null };
-
-  const r = await fetch(cfg.url, {
-    method:"POST",
-    headers:{
-      Authorization:`Bearer ${cfg.token}`,
-      "Content-Type":"application/json"
-    },
-    body:JSON.stringify([command, ...args])
-  });
-
-  if (!r.ok) throw new Error(`redis_${String(command).toLowerCase()}_${r.status}`);
-  const data = await r.json();
-  return { configured:true, result:data.result ?? null };
 }
 
 function nowIso(now = Date.now()) {
