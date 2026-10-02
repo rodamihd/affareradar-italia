@@ -753,6 +753,8 @@ export default async function handler(req, res) {
       agentOsFreshnessSla:true,
       agentOsEgressGuard:true,
       agentOsMemoryProposalValidation:true,
+      agentOsReleaseManifest:true,
+      agentOsSemanticDecisionCachePolicy:true,
       offerLifecycleManager:true,
       portfolioOptimizer:true,
       verificationQueueWorker:true,

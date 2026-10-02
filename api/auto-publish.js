@@ -20,7 +20,8 @@ import {
   freshnessSla,
   egressGuard,
   releaseManifest,
-  knowledgeProposal
+  knowledgeProposal,
+  semanticDecisionCachePolicy
 } from "../lib/agentos-17_5-profile.js";
 import crypto from "node:crypto";
 
@@ -434,6 +435,43 @@ async function readAgentOsEntityControl(body) {
   }
 }
 
+async function persistKnowledgeProposal(body, knowledge, extra = {}) {
+  if (!redisConfig()) return { stored:false, committed:false, mode:"no_redis" };
+  try {
+    const entityId = universalEntityId(body);
+    const record = {
+      proposalId:knowledge.proposalId,
+      entityId,
+      state:knowledge.state,
+      commitAllowed:knowledge.commitAllowed,
+      reasons:knowledge.reasons,
+      verificationState:extra.verification?.state || null,
+      freshnessState:extra.freshness?.state || null,
+      sourceReputation:extra.sourceReputation?.score ?? null,
+      releaseManifest:extra.manifest || null,
+      updatedAt:nowIso()
+    };
+    await redisCommand("SET", `affareradar:knowledge:proposal:${knowledge.proposalId}`, JSON.stringify(record), "EX", 604800);
+
+    if (knowledge.commitAllowed) {
+      await redisCommand("SET", `affareradar:knowledge:active:${entityId}`, JSON.stringify({
+        proposalId:knowledge.proposalId,
+        entityId,
+        state:"ACTIVE",
+        verificationState:record.verificationState,
+        freshnessState:record.freshnessState,
+        sourceReputation:record.sourceReputation,
+        updatedAt:record.updatedAt
+      }), "EX", 604800);
+      return { stored:true, committed:true, entityId, mode:"proposal_validate_commit" };
+    }
+
+    return { stored:true, committed:false, entityId, mode:"proposal_only" };
+  } catch {
+    return { stored:false, committed:false, mode:"error" };
+  }
+}
+
 async function readOutcomeProfile(body) {
   const category = normalizeCategory(body.category);
   let stats = {};
@@ -681,6 +719,8 @@ export default async function handler(req, res) {
   const freshness = freshnessSla(body, verification, now);
   const knowledge = knowledgeProposal(body, { verification, freshness, sourceReputation });
   const manifest = releaseManifest({ intent:intent.intent });
+  const knowledgeStore = await persistKnowledgeProposal(body, knowledge, { verification, freshness, sourceReputation, manifest });
+  const semanticCache = semanticDecisionCachePolicy(body, { freshness });
   const egress = egressGuard(body, { policy, verification, freshness, intent, publication });
   const mode = systemMode({
     partnerTagConfigured:Boolean(process.env.AMAZON_PARTNER_TAG),
@@ -716,6 +756,8 @@ export default async function handler(req, res) {
       freshness,
       egress,
       knowledge,
+      knowledgeStore,
+      semanticCache,
       releaseManifest:manifest
     });
   }
@@ -1027,6 +1069,8 @@ export default async function handler(req, res) {
     freshness,
     egress,
     knowledge,
+    knowledgeStore,
+    semanticCache,
     releaseManifest:manifest
   });
 
@@ -1053,6 +1097,8 @@ export default async function handler(req, res) {
         freshness,
         egress,
         knowledge,
+        knowledgeStore,
+        semanticCache,
         releaseManifest:manifest,
         telegramMessageId:publishData.telegram_message_id
       });
