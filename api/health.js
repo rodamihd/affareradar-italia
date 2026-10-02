@@ -1,3 +1,5 @@
+import { runAgentOsSelfTest } from "../lib/agentos-selftest.js";
+
 export default async function handler(req, res) {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   const channelTarget = process.env.TELEGRAM_CHANNEL_ID || process.env.TELEGRAM_CHANNEL_USERNAME;
@@ -19,7 +21,8 @@ export default async function handler(req, res) {
     botTokenValid:false,
     targetReachable:false,
     botCanPost:false,
-    botMembershipStatus:null
+    botMembershipStatus:null,
+    agentOsSelfTest:req.query?.selftest === "1" ? runAgentOsSelfTest() : null
   };
 
   if (!token || !target) {
