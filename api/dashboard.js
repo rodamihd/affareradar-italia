@@ -591,7 +591,8 @@ export default async function handler(req, res) {
       "verification_resolved",
       "agentos_control_blocked",
       "agentos_task_completed",
-      "agentos_task_failed"
+      "agentos_task_failed",
+      "agentos_egress_blocked"
     ];
 
     const metricResults = await Promise.all(
@@ -747,6 +748,11 @@ export default async function handler(req, res) {
       agentOsPriorityQueue:true,
       agentOsDagOrchestrator:true,
       agentOsDagRecovery:true,
+      agentOs17_5Profile:true,
+      agentOsMixedMode:true,
+      agentOsFreshnessSla:true,
+      agentOsEgressGuard:true,
+      agentOsMemoryProposalValidation:true,
       offerLifecycleManager:true,
       portfolioOptimizer:true,
       verificationQueueWorker:true,
@@ -775,6 +781,7 @@ export default async function handler(req, res) {
       },
       verificationQueueCount:Number(verificationQueueCountResult.result || 0),
       agentOsControl:{
+        agentOsVersion:"17.5",
         autonomyLevel:configuredAutonomyLevel(),
         supportedTasks:taskRegistry(),
         queuedTasks:Number(agentOsTaskCountResult.result || 0),

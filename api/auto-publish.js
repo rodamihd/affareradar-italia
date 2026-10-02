@@ -15,6 +15,13 @@ import { verificationPlan } from "../lib/verification-orchestrator.js";
 import { systemMode } from "../lib/safe-mode-controller.js";
 import { agentOsEvent, agentOsRoutingDecision, universalEntityId } from "../lib/agentos-adapter.js";
 import { buildOfferLifecycle } from "../lib/offer-lifecycle.js";
+import {
+  resolveSignalIntent,
+  freshnessSla,
+  egressGuard,
+  releaseManifest,
+  knowledgeProposal
+} from "../lib/agentos-17_5-profile.js";
 import crypto from "node:crypto";
 
 const memory = globalThis.__affareRadarState || {
@@ -496,6 +503,7 @@ export default async function handler(req, res) {
   const outcomeProfile = await readOutcomeProfile(body);
   body = mergeLearnedSignals(body, outcomeProfile);
   const originality = evaluateOriginality(body);
+  const intent = resolveSignalIntent(body);
   const agentOsControl = await readAgentOsEntityControl(body);
 
   if (["HOLD","ARCHIVED"].includes(String(agentOsControl.state || "").toUpperCase())) {
@@ -670,6 +678,10 @@ export default async function handler(req, res) {
     repetition
   }, now);
   const verifyPlan = verificationPlan(body, verification);
+  const freshness = freshnessSla(body, verification, now);
+  const knowledge = knowledgeProposal(body, { verification, freshness, sourceReputation });
+  const manifest = releaseManifest({ intent:intent.intent });
+  const egress = egressGuard(body, { policy, verification, freshness, intent, publication });
   const mode = systemMode({
     partnerTagConfigured:Boolean(process.env.AMAZON_PARTNER_TAG),
     redisConfigured:Boolean(redisConfig()),
@@ -679,6 +691,34 @@ export default async function handler(req, res) {
   });
 
   const routing = agentOsRoutingDecision({ mode, policy, verification, opportunity });
+
+  if (!egress.passed) {
+    await recordAgentOsEvent("AFFARERADAR_EGRESS_BLOCKED", body, {
+      lifecycle:"BLOCKED",
+      knowledgeStatus:knowledge.state,
+      policy,
+      mode,
+      verification,
+      opportunity,
+      revenue,
+      sourceReputation,
+      freshness,
+      payload:{ routing, intent, egress, manifest }
+    });
+    await trackMetric("agentos_egress_blocked", body, { intent, freshness, egress, manifest });
+    return res.status(200).json({
+      ok:true,
+      published:false,
+      decision:"blocked",
+      reason:"agentos_17_5_egress_guard",
+      lifecycle:lifecycleStore.value?.status || "DISCOVERED",
+      intent,
+      freshness,
+      egress,
+      knowledge,
+      releaseManifest:manifest
+    });
+  }
   if (!mode.publishingAllowed) {
     await recordAgentOsEvent("AFFARERADAR_HELD", body, {
       lifecycle:"BLOCKED",
@@ -982,7 +1022,12 @@ export default async function handler(req, res) {
     mode,
     routing,
     agentLifecycle,
-    agentOsControl
+    agentOsControl,
+    intent,
+    freshness,
+    egress,
+    knowledge,
+    releaseManifest:manifest
   });
 
   try {
@@ -1004,6 +1049,11 @@ export default async function handler(req, res) {
         routing,
         agentLifecycle,
         agentOsControl,
+        intent,
+        freshness,
+        egress,
+        knowledge,
+        releaseManifest:manifest,
         telegramMessageId:publishData.telegram_message_id
       });
       await redisCommand("SET", `affareradar:evidence:${evidence.evidenceId}`, JSON.stringify(evidence), "EX", 7776000);
@@ -1050,6 +1100,11 @@ export default async function handler(req, res) {
     mode,
     routing,
     agentLifecycle,
-    agentOsControl
+    agentOsControl,
+    intent,
+    freshness,
+    egress,
+    knowledge,
+    releaseManifest:manifest
   });
 }
