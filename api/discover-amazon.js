@@ -1,3 +1,5 @@
+import { amazonAgentUserAgent } from "../lib/amazon-compliance.js";
+
 const MARKETPLACE = "www.amazon.it";
 const TOKEN_ENDPOINT = "https://api.amazon.co.uk/auth/o2/token";
 const API_BASE = "https://creatorsapi.amazon/catalog/v1";
@@ -55,7 +57,7 @@ async function getAccessToken(cfg) {
 
   const r = await fetch(TOKEN_ENDPOINT, {
     method:"POST",
-    headers:{ "Content-Type":"application/json" },
+    headers:{ "Content-Type":"application/json", "User-Agent":amazonAgentUserAgent("AffareRadarCreators") },
     body:JSON.stringify({
       grant_type:"client_credentials",
       client_id:cfg.credentialId,
@@ -99,7 +101,8 @@ async function searchItems(token, cfg, keywords) {
     headers:{
       Authorization:`Bearer ${token}`,
       "Content-Type":"application/json",
-      "x-marketplace":MARKETPLACE
+      "x-marketplace":MARKETPLACE,
+      "User-Agent":amazonAgentUserAgent("AffareRadarCreators")
     },
     body:JSON.stringify({
       marketplace:MARKETPLACE,
@@ -180,7 +183,12 @@ function toDeal(item, query) {
     historicalLow:false,
     stock:availability ? availability !== "OUT_OF_STOCK" : true,
     priceVerified:true,
-    couponVerified:true,
+    couponVerified:Boolean(badge),
+    priceSource:"creators_api",
+    amazonDataSource:"creators_api",
+    priceVerifiedByAmazon:true,
+    promotionVerifiedByAmazon:Boolean(badge),
+    couponVerifiedByAmazon:Boolean(badge),
     lastVerifiedAt:now,
     source:"amazon_creators_api",
     discoveryQuery:query
