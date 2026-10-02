@@ -1,27 +1,7 @@
 import { optimizePortfolio } from "../lib/portfolio-optimizer.js";
 import { buildOfferLifecycle } from "../lib/offer-lifecycle.js";
 import { agentOsEvent } from "../lib/agentos-adapter.js";
-function redisConfig() {
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  return url && token ? { url:url.replace(/\/$/, ""), token } : null;
-}
-
-async function redisCommand(command, ...args) {
-  const cfg = redisConfig();
-  if (!cfg) return { configured:false, result:null };
-  const r = await fetch(cfg.url, {
-    method:"POST",
-    headers:{
-      Authorization:`Bearer ${cfg.token}`,
-      "Content-Type":"application/json"
-    },
-    body:JSON.stringify([command, ...args])
-  });
-  if (!r.ok) throw new Error(`redis_${String(command).toLowerCase()}_${r.status}`);
-  const data = await r.json();
-  return { configured:true, result:data.result ?? null };
-}
+import { redisConfig, redisCommand } from "../lib/redis-rest.js";
 
 function authorized(req) {
   const cronSecret = process.env.CRON_SECRET;
