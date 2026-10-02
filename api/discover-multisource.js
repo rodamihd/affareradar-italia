@@ -1,5 +1,6 @@
 import { amazonAgentUserAgent } from "../lib/amazon-compliance.js";
-import { agentOsEvent } from "../lib/agentos-adapter.js";
+import { agentOsEvent, universalEntityId } from "../lib/agentos-adapter.js";
+import { buildSignalQuarantine, extractAsinFromAmazonUrl } from "../lib/signal-quarantine.js";
 import { offerDagTemplate, dagSummary } from "../lib/agentos-dag.js";
 
 function authorized(req) {
@@ -61,7 +62,7 @@ function decodeHtml(s) {
 
 function extractAmazonUrl(text) {
   const m = String(text || "").match(
-    /https?:\/\/(?:www\.)?amazon\.it\/[^\s"'<>]+|https?:\/\/amzn\.eu\/[^\s"'<>]+|https?:\/\/amzlink\.to\/[^\s"'<>]+/i
+    /https?:\/\/(?:www\.)?amazon\.it\/[^\s"'<>]+|https?:\/\/amzn\.eu\/[^\s"'<>]+|https?:\/\/amzlink\.to\/[^\s"'<>]+|https?:\/\/link\.amazon\/[^\s"'<>]+/i
   );
   return m ? m[0].replace(/&amp;/g, "&") : null;
 }
@@ -72,7 +73,7 @@ function normalizeAmazonUrl(raw) {
     const u = new URL(raw);
     const host = u.hostname.toLowerCase();
 
-    if (host === "amzn.eu" || host === "amzlink.to") {
+    if (host === "amzn.eu" || host === "amzlink.to" || host === "link.amazon") {
       return u.toString();
     }
 
@@ -98,7 +99,7 @@ async function resolveAmazonUrl(raw) {
       return normalizeAmazonUrl(raw);
     }
 
-    if (host !== "amzn.eu" && host !== "amzlink.to") return null;
+    if (host !== "amzn.eu" && host !== "amzlink.to" && host !== "link.amazon") return null;
 
     let r;
     try {
@@ -316,6 +317,29 @@ async function recordAgentOsEvent(event) {
   } catch {}
 }
 
+async function persistQuarantine(deal) {
+  if (!redisConfig() || !deal.signalClaims) return { stored:false };
+  try {
+    const entityId = universalEntityId(deal);
+    const record = {
+      entityId,
+      status:"PARSED",
+      quarantineId:deal.signalClaims.quarantineId,
+      signalClaims:deal.signalClaims,
+      title:deal.title || null,
+      amazonUrl:deal.amazonUrl || null,
+      asin:deal.asin || null,
+      source:deal.source || null,
+      createdAt:new Date().toISOString()
+    };
+    await redisCommand("SET", `affareradar:quarantine:${deal.signalClaims.quarantineId}`, JSON.stringify(record), "EX", 172800);
+    await redisCommand("ZADD", "affareradar:quarantine:queue", String(Date.now()), deal.signalClaims.quarantineId);
+    return { stored:true, entityId, quarantineId:deal.signalClaims.quarantineId };
+  } catch {
+    return { stored:false };
+  }
+}
+
 async function createAgentOsDagForSignal(deal) {
   if (!redisConfig()) return null;
   try {
@@ -433,18 +457,29 @@ export default async function handler(req, res) {
     }
 
     deal.amazonUrl = resolvedUrl;
-    deal.lastVerifiedAt = new Date().toISOString();
+    deal.asin = deal.asin || extractAsinFromAmazonUrl(resolvedUrl);
+    deal.signalObservedAt = deal.lastVerifiedAt || new Date().toISOString();
+    deal.signalClaims = buildSignalQuarantine(deal, Date.now());
+    deal.quarantineState = "PARSED";
+    deal.requiresAmazonVerification = deal.signalClaims.requiresAmazonVerification;
+    deal.lastVerifiedAt = null;
     deal.priceVerified = false;
     deal.priceSource = "external_signal";
     deal.priceVerifiedByAmazon = false;
     deal.promotionVerifiedByAmazon = false;
     deal.couponVerifiedByAmazon = false;
 
+    const quarantine = await persistQuarantine(deal);
     await recordAgentOsEvent(agentOsEvent("AFFARERADAR_SIGNAL_CAPTURED", deal, {
       lifecycle:"PARSED",
       knowledgeStatus:"PARSED",
       freshness:deal.lastVerifiedAt || null,
-      payload:{ verificationRequired:true, sourceVerified:deal.sourceVerified === true }
+      payload:{
+        verificationRequired:true,
+        sourceVerified:deal.sourceVerified === true,
+        quarantineId:deal.signalClaims?.quarantineId || null,
+        quarantineStored:quarantine.stored === true
+      }
     }));
     const dag = await createAgentOsDagForSignal(deal);
     const publish = await submit(req, deal);
