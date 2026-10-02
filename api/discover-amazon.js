@@ -4,6 +4,7 @@ import { agentOsEvent } from "../lib/agentos-adapter.js";
 import { offerDagTemplate, dagSummary } from "../lib/agentos-dag.js";
 import { extractAsinFromUrl } from "../lib/verification-orchestrator.js";
 import { sourceReputationKeys, applySourceOutcome } from "../lib/source-reputation.js";
+import { providerHealthDefaults, providerCanAttempt, recordProviderSuccessState, recordProviderFailureState } from "../lib/provider-health.js";
 import crypto from "node:crypto";
 import { startRuntimeObservation, runtimeSuccess, runtimeFailure } from "../lib/runtime-observability.js";
 
@@ -176,6 +177,38 @@ async function redisCommand(command, ...args) {
   if (!r.ok) throw new Error(`redis_${String(command).toLowerCase()}_${r.status}`);
   const data = await r.json();
   return { configured:true, result:data.result ?? null };
+}
+
+async function readProviderHealth(provider) {
+  if (!redisConfig()) return providerHealthDefaults(provider);
+  try {
+    const rr = await redisCommand("GET", `affareradar:provider-health:${provider}`);
+    if (!rr.result) return providerHealthDefaults(provider);
+    return { ...providerHealthDefaults(provider), ...JSON.parse(rr.result) };
+  } catch {
+    return providerHealthDefaults(provider);
+  }
+}
+
+async function writeProviderHealth(provider, health) {
+  if (!redisConfig()) return;
+  try {
+    await redisCommand("SET", `affareradar:provider-health:${provider}`, JSON.stringify(health), "EX", 604800);
+  } catch {}
+}
+
+async function providerSuccess(provider) {
+  const current = await readProviderHealth(provider);
+  const next = recordProviderSuccessState(current, provider);
+  await writeProviderHealth(provider, next);
+  return next;
+}
+
+async function providerFailure(provider, error) {
+  const current = await readProviderHealth(provider);
+  const next = recordProviderFailureState(current, provider, error);
+  await writeProviderHealth(provider, next);
+  return next;
 }
 
 async function getAccessToken(cfg) {
@@ -479,26 +512,44 @@ async function processVerificationQueue(req, token, cfg, paCfg) {
       let provider = null;
 
       if (cfg && token) {
-        try {
-          const items = await searchItems(token, cfg, asin);
-          const exact = items.find(item => String(item?.asin || "").toUpperCase() === asin);
-          verifiedDeal = exact ? toDeal(exact, `verify:${asin}`) : null;
-          attempts.push({ provider:"creators_api", ok:Boolean(verifiedDeal) });
-          if (verifiedDeal) provider = "creators_api";
-        } catch (error) {
-          attempts.push({ provider:"creators_api", ok:false, error:String(error?.message || error) });
+        const health = await readProviderHealth("creators_api");
+        if (!providerCanAttempt(health)) {
+          attempts.push({ provider:"creators_api", ok:false, skipped:true, reason:"circuit_open", retryAfter:health.retryAfter || null });
+        } else {
+          try {
+            const items = await searchItems(token, cfg, asin);
+            const exact = items.find(item => String(item?.asin || "").toUpperCase() === asin);
+            verifiedDeal = exact ? toDeal(exact, `verify:${asin}`) : null;
+            attempts.push({ provider:"creators_api", ok:Boolean(verifiedDeal) });
+            if (verifiedDeal) {
+              provider = "creators_api";
+              await providerSuccess("creators_api");
+            }
+          } catch (error) {
+            const nextHealth = await providerFailure("creators_api", error);
+            attempts.push({ provider:"creators_api", ok:false, error:String(error?.message || error), providerHealth:nextHealth.state });
+          }
         }
       }
 
       if (!verifiedDeal && paCfg) {
-        try {
-          const items = await paGetItem(paCfg, asin);
-          const exact = items.find(item => String(item?.ASIN || "").toUpperCase() === asin);
-          verifiedDeal = exact ? paItemToDeal(exact) : null;
-          attempts.push({ provider:"pa_api", ok:Boolean(verifiedDeal) });
-          if (verifiedDeal) provider = "pa_api";
-        } catch (error) {
-          attempts.push({ provider:"pa_api", ok:false, error:String(error?.message || error) });
+        const health = await readProviderHealth("pa_api");
+        if (!providerCanAttempt(health)) {
+          attempts.push({ provider:"pa_api", ok:false, skipped:true, reason:"circuit_open", retryAfter:health.retryAfter || null });
+        } else {
+          try {
+            const items = await paGetItem(paCfg, asin);
+            const exact = items.find(item => String(item?.ASIN || "").toUpperCase() === asin);
+            verifiedDeal = exact ? paItemToDeal(exact) : null;
+            attempts.push({ provider:"pa_api", ok:Boolean(verifiedDeal) });
+            if (verifiedDeal) {
+              provider = "pa_api";
+              await providerSuccess("pa_api");
+            }
+          } catch (error) {
+            const nextHealth = await providerFailure("pa_api", error);
+            attempts.push({ provider:"pa_api", ok:false, error:String(error?.message || error), providerHealth:nextHealth.state });
+          }
         }
       }
 
@@ -615,11 +666,16 @@ export default async function handler(req, res) {
   try {
     const token = cfg ? await getAccessToken(cfg) : null;
     const verificationQueue = await processVerificationQueue(req, token, cfg, paCfg);
+    const providerHealth = {
+      creators:cfg ? await readProviderHealth("creators_api") : null,
+      paApi:paCfg ? await readProviderHealth("pa_api") : null
+    };
     if (req.body?.verificationOnly === true) {
       return res.status(200).json({
         ok:true,
         mode:"verification_only",
         providers:{ creators:Boolean(cfg), paApi:Boolean(paCfg) },
+        providerHealth,
         verificationQueue
       });
     }
@@ -678,6 +734,7 @@ export default async function handler(req, res) {
       discovered:unique.length,
       submitted:results.length,
       verificationQueue,
+      providerHealth,
       results
     });
   } catch (error) {
