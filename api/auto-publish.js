@@ -711,7 +711,6 @@ export default async function handler(req, res) {
     if (redisConfig()) {
       const evidence = evidenceRecord(body, {
         channel:"telegram",
-        publicationCompliance:publishData.publicationCompliance || null,
         repetition,
         trafficSource,
         originality,
