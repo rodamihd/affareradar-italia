@@ -9,6 +9,10 @@ import { evaluateAmazonVerification } from "../lib/amazon-verification-broker.js
 import { opportunityScoreV2 } from "../lib/opportunity-engine-v2.js";
 import { evaluatePolicies } from "../lib/policy-engine.js";
 import { computeSourceReputation, initialSourceReputation, sourceKey } from "../lib/source-reputation.js";
+import { learnedOutcomeProfile, mergeLearnedSignals } from "../lib/outcome-learning.js";
+import { expectedRevenue } from "../lib/expected-revenue-engine.js";
+import { verificationPlan } from "../lib/verification-orchestrator.js";
+import { systemMode } from "../lib/safe-mode-controller.js";
 import crypto from "node:crypto";
 
 const memory = globalThis.__affareRadarState || {
@@ -395,6 +399,48 @@ async function readSourceReputation(body) {
   }
 }
 
+async function readOutcomeProfile(body) {
+  const category = normalizeCategory(body.category);
+  let stats = {};
+  if (redisConfig()) {
+    try {
+      const rr = await redisCommand("GET", `affareradar:outcome:category:${category}`);
+      if (rr.result) stats = JSON.parse(rr.result);
+    } catch {}
+  }
+  return learnedOutcomeProfile(stats, body);
+}
+
+async function recordOutcomePublish(body, success = true) {
+  if (!redisConfig()) return;
+  const category = normalizeCategory(body.category);
+  const key = `affareradar:outcome:category:${category}`;
+  try {
+    const rr = await redisCommand("GET", key);
+    let stats = { impressions:0, clicks:0, conversions:0, engagements:0, publishes:0, successfulPublishes:0 };
+    if (rr.result) {
+      try { stats = { ...stats, ...JSON.parse(rr.result) }; } catch {}
+    }
+    stats.publishes += 1;
+    if (success) stats.successfulPublishes += 1;
+    stats.lastUpdatedAt = nowIso();
+    await redisCommand("SET", key, JSON.stringify(stats), "EX", 7776000);
+  } catch {}
+}
+
+async function enqueueVerification(body, plan) {
+  if (!redisConfig()) return { queued:false, mode:"no_redis" };
+  try {
+    const dealId = buildDealId(body);
+    const payload = { dealId, body, plan, queuedAt:nowIso() };
+    await redisCommand("SET", `affareradar:verification:item:${dealId}`, JSON.stringify(payload), "EX", 86400);
+    await redisCommand("ZADD", "affareradar:verification:queue", String(Date.now()), dealId);
+    return { queued:true, mode:"persistent_upstash_redis" };
+  } catch {
+    return { queued:false, mode:"error" };
+  }
+}
+
 async function rollbackDedupe(dedupe, fingerprint) {
   if (dedupe.mode === "persistent_upstash_redis" && dedupe.key) {
     try { await redisCommand("DEL", dedupe.key); } catch {}
@@ -418,7 +464,9 @@ export default async function handler(req, res) {
   const rawBody = req.body || {};
   const editorial = transformExternalEditorial(rawBody);
   const publication = sanitizeForAmazonPublication(editorial.body, now);
-  const body = publication.body;
+  let body = publication.body;
+  const outcomeProfile = await readOutcomeProfile(body);
+  body = mergeLearnedSignals(body, outcomeProfile);
   const originality = evaluateOriginality(body);
 
   if (!originality.passed) {
@@ -561,6 +609,11 @@ export default async function handler(req, res) {
     promotionExpired:false,
     disclosurePresent:true
   });
+  const revenue = expectedRevenue(body, { reward, outcomeProfile });
+  body.commissionPotentialScore = Number.isFinite(Number(body.commissionPotentialScore))
+    ? Number(body.commissionPotentialScore)
+    : revenue.commissionPotentialScore;
+
   const opportunity = opportunityScoreV2(body, {
     verification,
     sourceReputation,
@@ -570,6 +623,31 @@ export default async function handler(req, res) {
     originality,
     repetition
   }, now);
+  const verifyPlan = verificationPlan(body, verification);
+  const mode = systemMode({
+    partnerTagConfigured:Boolean(process.env.AMAZON_PARTNER_TAG),
+    redisConfigured:Boolean(redisConfig()),
+    policy,
+    trafficSource,
+    verification
+  });
+
+  if (!mode.publishingAllowed) {
+    await trackMetric("safe_mode_blocked", body, { mode, policy, verification, opportunity, revenue, verifyPlan });
+    return res.status(200).json({
+      ok:true,
+      published:false,
+      decision:"safe_mode",
+      reason:"system_safe_mode",
+      lifecycle:lifecycleStore.value?.status || "DISCOVERED",
+      mode,
+      policy,
+      verification,
+      opportunity,
+      revenue,
+      verifyPlan
+    });
+  }
 
   if (policy.blocking.length) {
     await trackMetric("policy_blocked", body, { policy, verification, sourceReputation, opportunity });
@@ -587,7 +665,8 @@ export default async function handler(req, res) {
   }
 
   if (!isReward && opportunity.action === "VERIFY") {
-    await trackMetric("verification_required", body, { policy, verification, sourceReputation, opportunity });
+    const verificationQueue = await enqueueVerification(body, verifyPlan);
+    await trackMetric("verification_required", body, { policy, verification, sourceReputation, opportunity, revenue, verifyPlan, verificationQueue });
     return res.status(200).json({
       ok:true,
       published:false,
@@ -597,7 +676,10 @@ export default async function handler(req, res) {
       policy,
       verification,
       sourceReputation,
-      opportunity
+      opportunity,
+      revenue,
+      verifyPlan,
+      verificationQueue
     });
   }
 
@@ -742,6 +824,7 @@ export default async function handler(req, res) {
   }
 
   await recordAntiSpam(antiSpamState, category, now);
+  await recordOutcomePublish(body, true);
 
   const lifecycle = nextLifecycle(lifecycleStore.value, body, now);
   await writeLifecycle(lifecycleStore, dealId, lifecycle);
@@ -791,7 +874,11 @@ export default async function handler(req, res) {
     verification,
     sourceReputation,
     policy,
-    opportunity
+    opportunity,
+    outcomeProfile,
+    revenue,
+    verifyPlan,
+    mode
   });
 
   try {
@@ -806,6 +893,10 @@ export default async function handler(req, res) {
         sourceReputation,
         policy,
         opportunity,
+        outcomeProfile,
+        revenue,
+        verifyPlan,
+        mode,
         telegramMessageId:publishData.telegram_message_id
       });
       await redisCommand("SET", `affareradar:evidence:${evidence.evidenceId}`, JSON.stringify(evidence), "EX", 7776000);
@@ -845,6 +936,10 @@ export default async function handler(req, res) {
     verification,
     sourceReputation,
     policy,
-    opportunity
+    opportunity,
+    outcomeProfile,
+    revenue,
+    verifyPlan,
+    mode
   });
 }
