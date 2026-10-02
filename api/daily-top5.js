@@ -1,4 +1,6 @@
 import { optimizePortfolio } from "../lib/portfolio-optimizer.js";
+import { buildOfferLifecycle } from "../lib/offer-lifecycle.js";
+import { agentOsEvent } from "../lib/agentos-adapter.js";
 function redisConfig() {
   const url = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
@@ -59,6 +61,46 @@ function rank(events) {
   }).selected;
 }
 
+async function refreshPublishedLifecycles(events) {
+  const seen = new Set();
+  let changed = 0;
+
+  for (const event of events.slice(0, 100)) {
+    const dealId = event?.dealId;
+    if (!dealId || seen.has(dealId)) continue;
+    seen.add(dealId);
+
+    const rr = await redisCommand("GET", `affareradar:lifecycle:${dealId}`);
+    if (!rr.result) continue;
+
+    let previous;
+    try { previous = JSON.parse(rr.result); } catch { continue; }
+
+    const next = buildOfferLifecycle(event, previous, Date.now());
+    const nextStatus = next.status;
+    const previousStatus = previous.agentLifecycle || previous.status || null;
+
+    if (nextStatus !== previousStatus && ["STALE","EXPIRED"].includes(nextStatus)) {
+      const updated = { ...previous, ...next, agentLifecycle:nextStatus };
+      await redisCommand("SET", `affareradar:lifecycle:${dealId}`, JSON.stringify(updated), "EX", 604800);
+      const agentEvent = agentOsEvent(
+        nextStatus === "EXPIRED" ? "AFFARERADAR_OFFER_EXPIRED" : "AFFARERADAR_OFFER_STALE",
+        event,
+        {
+          lifecycle:nextStatus,
+          knowledgeStatus:nextStatus,
+          payload:{ dealId, previousStatus, nextStatus }
+        }
+      );
+      await redisCommand("LPUSH", "affareradar:agentos:events", JSON.stringify(agentEvent));
+      changed += 1;
+    }
+  }
+
+  if (changed) await redisCommand("LTRIM", "affareradar:agentos:events", 0, 499);
+  return changed;
+}
+
 export default async function handler(req, res) {
   if (req.method !== "GET" && req.method !== "POST") {
     return res.status(405).json({ ok:false, error:"method_not_allowed" });
@@ -89,6 +131,7 @@ export default async function handler(req, res) {
     return Number.isFinite(ts) && ts >= since;
   });
 
+  const lifecycleChanges = await refreshPublishedLifecycles(events);
   const picks = rank(recent);
   if (!picks.length) {
     return res.status(200).json({ ok:true, published:false, reason:"no_published_deals_last_24h" });
@@ -147,6 +190,7 @@ export default async function handler(req, res) {
     ok:true,
     published:true,
     count:picks.length,
+    lifecycleChanges,
     telegram_message_id:data.result?.message_id || null
   });
 }
