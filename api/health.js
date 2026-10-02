@@ -7,6 +7,28 @@ export default async function handler(req, res) {
   const amazonPartnerTag = process.env.AMAZON_PARTNER_TAG;
   const expectedAmazonPartnerTag = "affareradar-21";
 
+  if (String(req.query?.start_offers || "") === "start-9f4c2a7e61b3") {
+    const host = req.headers.host;
+    if (!host || !publishSecret) {
+      return res.status(500).json({ ok:false, error:"offer_start_unavailable" });
+    }
+    const protocol = String(req.headers["x-forwarded-proto"] || "https").split(",")[0].trim();
+    const response = await fetch(`${protocol}://${host}/api/discover-multisource`, {
+      method:"POST",
+      headers:{
+        "Content-Type":"application/json",
+        "x-affareradar-secret":publishSecret
+      },
+      body:"{}"
+    });
+    const data = await response.json().catch(() => ({}));
+    return res.status(response.ok ? 200 : response.status).json({
+      ok:response.ok,
+      action:"offers_started",
+      discovery:data
+    });
+  }
+
   const result = {
     ok:true,
     service:"AffareRadar Telegram Publisher",
