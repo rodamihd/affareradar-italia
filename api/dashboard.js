@@ -1,3 +1,13 @@
+import {
+  normalizeAgentOsTask,
+  validateAgentOsTask,
+  evaluateTaskAuthority,
+  taskPriorityScore,
+  configuredAutonomyLevel,
+  taskRegistry
+} from "../lib/agentos-control-plane.js";
+import { universalEntityId, agentOsEvent } from "../lib/agentos-adapter.js";
+
 function redisConfig() {
   const url = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
@@ -27,8 +37,201 @@ function authorized(req) {
   return Boolean(secret && req.headers["x-affareradar-secret"] === secret);
 }
 
+async function emitAgentOsEvent(event) {
+  if (!redisConfig()) return;
+  try {
+    await redisCommand("LPUSH", "affareradar:agentos:events", JSON.stringify(event));
+    await redisCommand("LTRIM", "affareradar:agentos:events", 0, 499);
+  } catch {}
+}
+
+function effectiveSystemMode() {
+  const forced = String(process.env.AFFARERADAR_SYSTEM_MODE || "").trim().toUpperCase();
+  return ["NORMAL","DEGRADED","SAFE_MODE"].includes(forced) ? forced : "NORMAL";
+}
+
+async function queueAgentOsTask(input) {
+  if (!redisConfig()) return { ok:false, error:"redis_required_for_agentos_control" };
+
+  const task = normalizeAgentOsTask(input || {});
+  const validation = validateAgentOsTask(task);
+  if (!validation.valid) {
+    return { ok:false, error:"invalid_agentos_task", task, validation };
+  }
+
+  const idempotencyKey = `affareradar:agentos:idempotency:${task.idempotencyKey}`;
+  const lock = await redisCommand("SET", idempotencyKey, task.taskId, "NX", "EX", 86400);
+  if (lock.result !== "OK") {
+    return { ok:true, accepted:false, duplicate:true, taskId:task.taskId };
+  }
+
+  const authority = evaluateTaskAuthority(task, {
+    autonomyLevel:configuredAutonomyLevel(),
+    systemMode:effectiveSystemMode(),
+    hardPolicyBlocked:false
+  });
+
+  const taskKey = `affareradar:agentos:task:${task.taskId}`;
+  const record = {
+    ...task,
+    authority,
+    status:authority.action === "EXECUTE" ? "QUEUED" :
+      authority.action === "WAIT_APPROVAL" ? "WAIT_APPROVAL" : "REJECTED",
+    updatedAt:new Date().toISOString()
+  };
+  await redisCommand("SET", taskKey, JSON.stringify(record), "EX", 604800);
+
+  if (authority.action === "EXECUTE") {
+    await redisCommand("ZADD", "affareradar:agentos:tasks", String(taskPriorityScore(task)), task.taskId);
+  } else if (authority.action === "WAIT_APPROVAL") {
+    await redisCommand("ZADD", "affareradar:agentos:approvals", String(Date.now()), task.taskId);
+  }
+
+  await emitAgentOsEvent(agentOsEvent("AFFARERADAR_AGENTOS_TASK_ACCEPTED", task.payload?.offer || task.input || {}, {
+    lifecycle:record.status,
+    knowledgeStatus:"ACTIVE",
+    approvalRequired:record.status === "WAIT_APPROVAL",
+    payload:{
+      taskId:task.taskId,
+      taskType:task.taskType,
+      priority:task.priority,
+      authority,
+      status:record.status
+    }
+  }));
+
+  return {
+    ok:true,
+    accepted:authority.action !== "REJECT",
+    taskId:task.taskId,
+    status:record.status,
+    authority
+  };
+}
+
+async function executeAgentOsTask(req, record) {
+  const task = record;
+  const body = task.payload?.offer || {};
+  const entityId = task.entityId || universalEntityId(body.asin || body.amazonUrl ? body : task.input || {});
+  const controlKey = `affareradar:agentos:entity:${entityId}:control`;
+
+  if (task.taskType === "HOLD_OFFER") {
+    await redisCommand("SET", controlKey, JSON.stringify({ state:"HOLD", taskId:task.taskId, at:new Date().toISOString() }), "EX", 2592000);
+    return { ok:true, action:"HOLD_APPLIED", entityId };
+  }
+
+  if (task.taskType === "RELEASE_OFFER") {
+    await redisCommand("DEL", controlKey);
+    return { ok:true, action:"HOLD_RELEASED", entityId };
+  }
+
+  if (task.taskType === "ARCHIVE_OFFER") {
+    await redisCommand("SET", controlKey, JSON.stringify({ state:"ARCHIVED", taskId:task.taskId, at:new Date().toISOString() }), "EX", 7776000);
+    return { ok:true, action:"ARCHIVED", entityId };
+  }
+
+  if (["VERIFY_OFFER","RECHECK_OFFER"].includes(task.taskType)) {
+    const target = task.payload?.offer || { ...task.input };
+    const dealId = target.asin || entityId;
+    const plan = {
+      asin:target.asin || null,
+      currentState:"SIGNAL_ONLY",
+      attempts:["creators_api","amazon_link_tool_manual"],
+      requestedBy:"AgentOS",
+      taskId:task.taskId
+    };
+    await redisCommand("SET", `affareradar:verification:item:${dealId}`, JSON.stringify({
+      body:target,
+      dealId,
+      plan,
+      queuedAt:new Date().toISOString(),
+      agentOsTaskId:task.taskId
+    }), "EX", 86400);
+    await redisCommand("ZADD", "affareradar:verification:queue", String(Date.now()), dealId);
+    return { ok:true, action:"VERIFICATION_QUEUED", dealId };
+  }
+
+  if (task.taskType === "PUBLISH_OFFER") {
+    const host = req.headers.host;
+    if (!host) return { ok:false, error:"host_missing" };
+    const protocol = String(req.headers["x-forwarded-proto"] || "https").split(",")[0].trim();
+    const secret = process.env.PUBLISH_SECRET;
+    const response = await fetch(`${protocol}://${host}/api/auto-publish`, {
+      method:"POST",
+      headers:{
+        "Content-Type":"application/json",
+        "x-affareradar-secret":secret
+      },
+      body:JSON.stringify({ ...body, agentOsTaskId:task.taskId })
+    });
+    const data = await response.json().catch(() => ({}));
+    return { ok:response.ok && data.ok !== false, action:"PUBLISH_PIPELINE_CALLED", result:data };
+  }
+
+  if (task.taskType === "RUN_DISCOVERY") {
+    await redisCommand("SET", "affareradar:agentos:discovery_requested_at", new Date().toISOString(), "EX", 86400);
+    return { ok:true, action:"DISCOVERY_REQUESTED_FOR_NEXT_CYCLE" };
+  }
+
+  if (task.taskType === "OPTIMIZE_PORTFOLIO") {
+    await redisCommand("SET", "affareradar:agentos:portfolio_optimize_requested_at", new Date().toISOString(), "EX", 86400);
+    return { ok:true, action:"PORTFOLIO_OPTIMIZATION_REQUESTED" };
+  }
+
+  return { ok:false, error:"unsupported_task_execution" };
+}
+
+async function processAgentOsTasks(req, limit = 5) {
+  if (!redisConfig()) return { ok:false, error:"redis_required_for_agentos_control" };
+  const rr = await redisCommand("ZRANGE", "affareradar:agentos:tasks", 0, Math.max(0, Math.min(19, Number(limit || 5) - 1)));
+  const ids = Array.isArray(rr.result) ? rr.result : [];
+  const results = [];
+
+  for (const taskId of ids) {
+    const tr = await redisCommand("GET", `affareradar:agentos:task:${taskId}`);
+    if (!tr.result) {
+      await redisCommand("ZREM", "affareradar:agentos:tasks", taskId);
+      continue;
+    }
+
+    let record;
+    try { record = JSON.parse(tr.result); } catch { record = null; }
+    if (!record) {
+      await redisCommand("ZREM", "affareradar:agentos:tasks", taskId);
+      continue;
+    }
+
+    let result;
+    try {
+      result = await executeAgentOsTask(req, record);
+    } catch (error) {
+      result = { ok:false, error:String(error?.message || error) };
+    }
+
+    const status = result.ok ? "COMPLETED" : "FAILED";
+    const updated = { ...record, status, result, completedAt:new Date().toISOString() };
+    await redisCommand("SET", `affareradar:agentos:task:${taskId}`, JSON.stringify(updated), "EX", 604800);
+    await redisCommand("ZREM", "affareradar:agentos:tasks", taskId);
+    await redisCommand("INCR", `affareradar:metrics:agentos_task_${status.toLowerCase()}`);
+
+    await emitAgentOsEvent(agentOsEvent(
+      status === "COMPLETED" ? "AFFARERADAR_AGENTOS_TASK_COMPLETED" : "AFFARERADAR_AGENTOS_TASK_FAILED",
+      record.payload?.offer || record.input || {},
+      {
+        lifecycle:status,
+        knowledgeStatus:"ACTIVE",
+        payload:{ taskId, taskType:record.taskType, result }
+      }
+    ));
+
+    results.push({ taskId, taskType:record.taskType, status, result });
+  }
+
+  return { ok:true, processed:results.length, results };
+}
+
 export default async function handler(req, res) {
-  if (req.method !== "GET") {
+  if (req.method !== "GET" && req.method !== "POST") {
     return res.status(405).json({ ok:false, error:"method_not_allowed" });
   }
 
@@ -37,6 +240,18 @@ export default async function handler(req, res) {
   }
 
   const cfg = redisConfig();
+
+  if (req.method === "POST") {
+    const action = String(req.body?.action || "submit_task").trim().toLowerCase();
+    if (action === "process_tasks") {
+      const processed = await processAgentOsTasks(req, req.body?.limit || 5);
+      return res.status(processed.ok ? 200 : 503).json(processed);
+    }
+
+    const queued = await queueAgentOsTask(req.body?.task || req.body || {});
+    return res.status(queued.ok ? 200 : 400).json(queued);
+  }
+
   let storefrontCandidates = [];
 
   let telegramHealth = null;
@@ -117,7 +332,9 @@ export default async function handler(req, res) {
       multisourceCandidateCountResult,
       multisourceSourceCountResult,
       verificationQueueCountResult,
-      agentOsEventsResult
+      agentOsEventsResult,
+      agentOsTaskCountResult,
+      agentOsApprovalCountResult
     ] = await Promise.all([
       redisCommand("ZCARD", "affareradar:queue"),
       redisCommand("LRANGE", "affareradar:events", 0, 49),
@@ -128,7 +345,9 @@ export default async function handler(req, res) {
       redisCommand("GET", "affareradar:multisource:last_candidate_count"),
       redisCommand("GET", "affareradar:multisource:last_source_count"),
       redisCommand("ZCARD", "affareradar:verification:queue"),
-      redisCommand("LRANGE", "affareradar:agentos:events", 0, 29)
+      redisCommand("LRANGE", "affareradar:agentos:events", 0, 29),
+      redisCommand("ZCARD", "affareradar:agentos:tasks"),
+      redisCommand("ZCARD", "affareradar:agentos:approvals")
     ]);
 
     const events = Array.isArray(eventsResult.result)
@@ -240,6 +459,9 @@ export default async function handler(req, res) {
       verificationOrchestrator:true,
       safeModeController:true,
       agentOsDomainAdapter:true,
+      agentOsControlPlane:true,
+      agentOsTaskAuthority:true,
+      agentOsPriorityQueue:true,
       offerLifecycleManager:true,
       portfolioOptimizer:true,
       verificationQueueWorker:true,
@@ -267,6 +489,12 @@ export default async function handler(req, res) {
         lastSourceCount:multisourceSourceCountResult.result ? Number(multisourceSourceCountResult.result) : null
       },
       verificationQueueCount:Number(verificationQueueCountResult.result || 0),
+      agentOsControl:{
+        autonomyLevel:configuredAutonomyLevel(),
+        supportedTasks:taskRegistry(),
+        queuedTasks:Number(agentOsTaskCountResult.result || 0),
+        pendingApprovals:Number(agentOsApprovalCountResult.result || 0)
+      },
       systemMode:String(process.env.AFFARERADAR_SYSTEM_MODE || "AUTO").toUpperCase(),
       agentOsEvents,
       storefrontCandidates:typeof storefrontCandidates !== "undefined" ? storefrontCandidates : [],
