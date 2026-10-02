@@ -1,5 +1,6 @@
 import { verifyTrackedPayload } from "../lib/attribution.js";
 import { redisConfig, redisCommand } from "../lib/redis-rest.js";
+import { outcomeDimensions } from "../lib/outcome-learning.js";
 
 function safeDestination(value) {
   try {
@@ -55,6 +56,29 @@ export default async function handler(req, res) {
       ]);
 
       await redisCommand("LTRIM", "affareradar:events", 0, 199);
+
+      if (["telegram_share","whatsapp_share","channel_invite"].includes(event.action)) {
+        const outcomeContext = {
+          category:data.category || "other",
+          source:data.source || "telegram",
+          dealType:data.dealType || data.contentType || "deal"
+        };
+        for (const dimension of outcomeDimensions(outcomeContext, Date.now())) {
+          const key = `affareradar:outcome:${dimension}`;
+          const rr = await redisCommand("GET", key);
+          let stats = {
+            impressions:0, clicks:0, conversions:0, engagements:0,
+            publishes:0, successfulPublishes:0, revenueEUR:0
+          };
+          if (rr.result) {
+            try { stats = { ...stats, ...JSON.parse(rr.result) }; } catch {}
+          }
+          stats.engagements = Number(stats.engagements || 0) + 1;
+          stats.lastUpdatedAt = new Date().toISOString();
+          await redisCommand("SET", key, JSON.stringify(stats), "EX", 7776000);
+        }
+        await redisCommand("INCR", "affareradar:metrics:tracked_engagement");
+      }
     }
   } catch {}
 
