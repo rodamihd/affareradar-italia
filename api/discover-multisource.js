@@ -1,3 +1,5 @@
+import { amazonAgentUserAgent } from "../lib/amazon-compliance.js";
+
 function authorized(req) {
   const cronSecret = process.env.CRON_SECRET;
   const publishSecret = process.env.PUBLISH_SECRET;
@@ -101,7 +103,7 @@ async function resolveAmazonUrl(raw) {
       r = await fetch(raw, {
         method:"HEAD",
         redirect:"follow",
-        headers:{ "User-Agent":"Mozilla/5.0 AffareRadar/1.0" }
+        headers:{ "User-Agent":amazonAgentUserAgent("AffareRadarMultiSource") }
       });
     } catch {}
 
@@ -109,7 +111,7 @@ async function resolveAmazonUrl(raw) {
       r = await fetch(raw, {
         method:"GET",
         redirect:"follow",
-        headers:{ "User-Agent":"Mozilla/5.0 AffareRadar/1.0" }
+        headers:{ "User-Agent":amazonAgentUserAgent("AffareRadarMultiSource") }
       });
     }
 
@@ -184,7 +186,11 @@ function itemFromText(text, source, imageUrl = null, publishedAt = null) {
     stock:true,
     lastVerifiedAt:publishedAt || new Date().toISOString(),
     source,
-    sourceVerified:true
+    sourceVerified:true,
+    priceSource:"external_signal",
+    priceVerifiedByAmazon:false,
+    promotionVerifiedByAmazon:false,
+    couponVerifiedByAmazon:false
   };
 }
 
@@ -263,7 +269,11 @@ function parseJson(data, source) {
       stock:row.stock === false ? false : true,
       lastVerifiedAt:row.lastVerifiedAt || row.publishedAt || new Date().toISOString(),
       source,
-      sourceVerified:true
+      sourceVerified:true,
+      priceSource:"external_signal",
+      priceVerifiedByAmazon:false,
+      promotionVerifiedByAmazon:false,
+      couponVerifiedByAmazon:false
     });
   }
   return out;
@@ -369,7 +379,11 @@ export default async function handler(req, res) {
 
     deal.amazonUrl = resolvedUrl;
     deal.lastVerifiedAt = new Date().toISOString();
-    deal.priceVerified = true;
+    deal.priceVerified = false;
+    deal.priceSource = "external_signal";
+    deal.priceVerifiedByAmazon = false;
+    deal.promotionVerifiedByAmazon = false;
+    deal.couponVerifiedByAmazon = false;
 
     const publish = await submit(req, deal);
     results.push({
