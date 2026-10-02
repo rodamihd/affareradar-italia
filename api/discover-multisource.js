@@ -4,6 +4,7 @@ import { buildSignalQuarantine, extractAsinFromAmazonUrl } from "../lib/signal-q
 import { offerDagTemplate, dagSummary } from "../lib/agentos-dag.js";
 import { startRuntimeObservation, runtimeSuccess, runtimeFailure } from "../lib/runtime-observability.js";
 import { redisConfig, redisCommand } from "../lib/redis-rest.js";
+import { runAgentOsSelfTest } from "../lib/agentos-selftest.js";
 import { sourceReputationKeys, applySourceOutcome } from "../lib/source-reputation.js";
 
 function authorized(req) {
@@ -418,6 +419,16 @@ export default async function handler(req, res) {
   }
   if (!authorized(req)) {
     return res.status(401).json({ ok:false, error:"unauthorized" });
+  }
+
+  const preflight = runAgentOsSelfTest();
+  if (!preflight.passed) {
+    runtimeFailure(__obs, new Error("agentos_preflight_failed"), { failedTests:preflight.failedCount });
+    return res.status(503).json({
+      ok:false,
+      error:"agentos_preflight_failed",
+      selfTest:{ total:preflight.total, failedCount:preflight.failedCount, failed:preflight.failed }
+    });
   }
 
   const sources = sourceUrls();
