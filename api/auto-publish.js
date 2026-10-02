@@ -5,6 +5,10 @@ import { evaluateRepublish } from "../lib/republish-intelligence.js";
 import { evaluateAmazonReward, rewardContent } from "../lib/rewards-engine.js";
 import { evaluateRepetition, evaluateTrafficSource, evidenceRecord, transformExternalEditorial, evaluateOriginality } from "../lib/creator-compliance.js";
 import { sanitizeForAmazonPublication } from "../lib/amazon-compliance.js";
+import { evaluateAmazonVerification } from "../lib/amazon-verification-broker.js";
+import { opportunityScoreV2 } from "../lib/opportunity-engine-v2.js";
+import { evaluatePolicies } from "../lib/policy-engine.js";
+import { computeSourceReputation, initialSourceReputation, sourceKey } from "../lib/source-reputation.js";
 import crypto from "node:crypto";
 
 const memory = globalThis.__affareRadarState || {
@@ -377,6 +381,20 @@ async function dedupeCheck(fingerprint, now, cooldownSeconds) {
   return { duplicate:false, mode:"best_effort_in_memory", key:null };
 }
 
+async function readSourceReputation(body) {
+  const base = initialSourceReputation(body);
+  if (!redisConfig()) return base;
+  try {
+    const key = sourceKey(body);
+    const rr = await redisCommand("GET", `affareradar:source:stats:${key}`);
+    if (!rr.result) return base;
+    const stats = JSON.parse(rr.result);
+    return computeSourceReputation(stats, body);
+  } catch {
+    return base;
+  }
+}
+
 async function rollbackDedupe(dedupe, fingerprint) {
   if (dedupe.mode === "persistent_upstash_redis" && dedupe.key) {
     try { await redisCommand("DEL", dedupe.key); } catch {}
@@ -532,6 +550,71 @@ export default async function handler(req, res) {
   const lifecycleStore = await readLifecycle(dealId);
   const creatorQuality = creatorQualityScore(body);
   const window = publishingWindow(new Date(now));
+  const verification = evaluateAmazonVerification(body, now);
+  const sourceReputation = await readSourceReputation(body);
+  const policy = evaluatePolicies(body, {
+    verification,
+    publication,
+    originality,
+    repetition,
+    trafficSource,
+    promotionExpired:false,
+    disclosurePresent:true
+  });
+  const opportunity = opportunityScoreV2(body, {
+    verification,
+    sourceReputation,
+    creatorQuality,
+    policy,
+    trafficSource,
+    originality,
+    repetition
+  }, now);
+
+  if (policy.blocking.length) {
+    await trackMetric("policy_blocked", body, { policy, verification, sourceReputation, opportunity });
+    return res.status(200).json({
+      ok:true,
+      published:false,
+      decision:"rejected",
+      reason:"policy_blocked",
+      lifecycle:lifecycleStore.value?.status || "VERIFIED",
+      policy,
+      verification,
+      sourceReputation,
+      opportunity
+    });
+  }
+
+  if (!isReward && opportunity.action === "VERIFY") {
+    await trackMetric("verification_required", body, { policy, verification, sourceReputation, opportunity });
+    return res.status(200).json({
+      ok:true,
+      published:false,
+      decision:"verify",
+      reason:"amazon_verification_required",
+      lifecycle:lifecycleStore.value?.status || "DISCOVERED",
+      policy,
+      verification,
+      sourceReputation,
+      opportunity
+    });
+  }
+
+  if (!isReward && (opportunity.action === "DISCARD" || opportunity.action === "OBSERVE")) {
+    await trackMetric("opportunity_not_publishable", body, { policy, verification, sourceReputation, opportunity });
+    return res.status(200).json({
+      ok:true,
+      published:false,
+      decision:opportunity.action.toLowerCase(),
+      reason:"opportunity_engine_v2",
+      lifecycle:lifecycleStore.value?.status || "DISCOVERED",
+      policy,
+      verification,
+      sourceReputation,
+      opportunity
+    });
+  }
 
   if (!isReward && !creatorQuality.passed && dealType !== "price_error") {
     await trackMetric("rejected_creator_quality", body, { creatorQuality, window });
@@ -704,7 +787,11 @@ export default async function handler(req, res) {
     repetition,
     trafficSource,
     originality,
-    publicationCompliance:publication
+    publicationCompliance:publication,
+    verification,
+    sourceReputation,
+    policy,
+    opportunity
   });
 
   try {
@@ -715,6 +802,10 @@ export default async function handler(req, res) {
         trafficSource,
         originality,
         publicationCompliance:publishData.publicationCompliance || publication,
+        verification,
+        sourceReputation,
+        policy,
+        opportunity,
         telegramMessageId:publishData.telegram_message_id
       });
       await redisCommand("SET", `affareradar:evidence:${evidence.evidenceId}`, JSON.stringify(evidence), "EX", 7776000);
@@ -750,6 +841,10 @@ export default async function handler(req, res) {
     repetition,
     trafficSource,
     originality,
-    publicationCompliance:publishData.publicationCompliance || publication
+    publicationCompliance:publishData.publicationCompliance || publication,
+    verification,
+    sourceReputation,
+    policy,
+    opportunity
   });
 }
