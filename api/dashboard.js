@@ -707,6 +707,24 @@ export default async function handler(req, res) {
       metrics[name] = Number(metricResults[i].result || 0);
     });
 
+    const providerHealthSnapshot = {
+      creators:null,
+      paApi:null
+    };
+
+    try {
+      const [creatorsHealthResult, paHealthResult] = await Promise.all([
+        redisCommand("GET", "affareradar:provider-health:creators_api"),
+        redisCommand("GET", "affareradar:provider-health:pa_api")
+      ]);
+      if (creatorsHealthResult.result) {
+        try { providerHealthSnapshot.creators = JSON.parse(creatorsHealthResult.result); } catch {}
+      }
+      if (paHealthResult.result) {
+        try { providerHealthSnapshot.paApi = JSON.parse(paHealthResult.result); } catch {}
+      }
+    } catch {}
+
     const [
       queueCountResult,
       eventsResult,
@@ -844,6 +862,7 @@ export default async function handler(req, res) {
       sourceReputationV2:true,
       sourceReputationTemporalDecay:true,
       multiProviderVerification:true,
+      providerCircuitBreakers:true,
       outcomeLearningEngine:true,
       expectedRevenueEngine:true,
       verificationOrchestrator:true,
@@ -885,7 +904,8 @@ export default async function handler(req, res) {
       modules,
       amazonVerificationProviders:{
         creators:Boolean(process.env.AMAZON_CREATORS_CREDENTIAL_ID && process.env.AMAZON_CREATORS_CREDENTIAL_SECRET && process.env.AMAZON_PARTNER_TAG),
-        paApi:Boolean(process.env.AMAZON_PAAPI_ACCESS_KEY && process.env.AMAZON_PAAPI_SECRET_KEY && process.env.AMAZON_PARTNER_TAG)
+        paApi:Boolean(process.env.AMAZON_PAAPI_ACCESS_KEY && process.env.AMAZON_PAAPI_SECRET_KEY && process.env.AMAZON_PARTNER_TAG),
+        health:providerHealthSnapshot
       },
       amazonDiscovery:{
         configured:modules.amazonDiscovery,
