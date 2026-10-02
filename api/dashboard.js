@@ -785,6 +785,9 @@ export default async function handler(req, res) {
       opportunityEngineV2:true,
       policyAsCodeEngine:true,
       sourceReputationEngine:true,
+      sourceReputationV2:true,
+      sourceReputationTemporalDecay:true,
+      multiProviderVerification:true,
       outcomeLearningEngine:true,
       expectedRevenueEngine:true,
       verificationOrchestrator:true,
@@ -819,6 +822,10 @@ export default async function handler(req, res) {
       queue,
       lifecycle,
       modules,
+      amazonVerificationProviders:{
+        creators:Boolean(process.env.AMAZON_CREATORS_CREDENTIAL_ID && process.env.AMAZON_CREATORS_CREDENTIAL_SECRET && process.env.AMAZON_PARTNER_TAG),
+        paApi:Boolean(process.env.AMAZON_PAAPI_ACCESS_KEY && process.env.AMAZON_PAAPI_SECRET_KEY && process.env.AMAZON_PARTNER_TAG)
+      },
       amazonDiscovery:{
         configured:modules.amazonDiscovery,
         lastRunAt:lastDiscoveryAtResult.result || null,
