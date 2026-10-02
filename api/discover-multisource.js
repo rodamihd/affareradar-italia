@@ -306,6 +306,27 @@ async function fetchSource(url) {
   return parseRss(text, source);
 }
 
+async function updateSourceStats(source, publish) {
+  if (!redisConfig() || !source) return;
+  const key = `affareradar:source:stats:${String(source).trim().toLowerCase()}`;
+  try {
+    const rr = await redisCommand("GET", key);
+    let stats = { total:0, confirmed:0, rejected:0, published:0, verificationRequired:0 };
+    if (rr.result) {
+      try { stats = { ...stats, ...JSON.parse(rr.result) }; } catch {}
+    }
+    stats.total += 1;
+    const decision = String(publish?.data?.decision || "").toLowerCase();
+    const verificationState = String(publish?.data?.verification?.state || "").toUpperCase();
+    if (publish?.data?.published === true) stats.published += 1;
+    if (verificationState === "VERIFIED") stats.confirmed += 1;
+    if (decision === "verify") stats.verificationRequired += 1;
+    if (decision === "rejected" || publish?.ok === false) stats.rejected += 1;
+    stats.lastUpdatedAt = new Date().toISOString();
+    await redisCommand("SET", key, JSON.stringify(stats), "EX", 2592000);
+  } catch {}
+}
+
 async function submit(req, deal) {
   const host = req.headers.host;
   if (!host) throw new Error("host_missing");
@@ -390,6 +411,7 @@ export default async function handler(req, res) {
     deal.couponVerifiedByAmazon = false;
 
     const publish = await submit(req, deal);
+    await updateSourceStats(deal.source, publish);
     results.push({
       title:deal.title,
       dealScore:deal.dealScore,
