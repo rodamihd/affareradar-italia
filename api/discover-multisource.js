@@ -1,4 +1,5 @@
 import { amazonAgentUserAgent } from "../lib/amazon-compliance.js";
+import { agentOsEvent } from "../lib/agentos-adapter.js";
 
 function authorized(req) {
   const cronSecret = process.env.CRON_SECRET;
@@ -306,6 +307,14 @@ async function fetchSource(url) {
   return parseRss(text, source);
 }
 
+async function recordAgentOsEvent(event) {
+  if (!redisConfig()) return;
+  try {
+    await redisCommand("LPUSH", "affareradar:agentos:events", JSON.stringify(event));
+    await redisCommand("LTRIM", "affareradar:agentos:events", 0, 499);
+  } catch {}
+}
+
 async function updateSourceStats(source, publish) {
   if (!redisConfig() || !source) return;
   const key = `affareradar:source:stats:${String(source).trim().toLowerCase()}`;
@@ -410,6 +419,12 @@ export default async function handler(req, res) {
     deal.promotionVerifiedByAmazon = false;
     deal.couponVerifiedByAmazon = false;
 
+    await recordAgentOsEvent(agentOsEvent("AFFARERADAR_SIGNAL_CAPTURED", deal, {
+      lifecycle:"PARSED",
+      knowledgeStatus:"PARSED",
+      freshness:deal.lastVerifiedAt || null,
+      payload:{ verificationRequired:true, sourceVerified:deal.sourceVerified === true }
+    }));
     const publish = await submit(req, deal);
     await updateSourceStats(deal.source, publish);
     results.push({
