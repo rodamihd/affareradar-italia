@@ -24,6 +24,7 @@ import {
   semanticDecisionCachePolicy
 } from "../lib/agentos-17_5-profile.js";
 import crypto from "node:crypto";
+import { startRuntimeObservation, runtimeSuccess, runtimeFailure } from "../lib/runtime-observability.js";
 
 const memory = globalThis.__affareRadarState || {
   published:new Map(),
@@ -536,6 +537,7 @@ async function rollbackDedupe(dedupe, fingerprint) {
 }
 
 export default async function handler(req, res) {
+  const __obs = startRuntimeObservation(req, "/api/auto-publish");
   if (req.method !== "POST") {
     return res.status(405).json({ ok:false, error:"method_not_allowed" });
   }
@@ -991,6 +993,7 @@ export default async function handler(req, res) {
   if (!publishResponse.ok || !publishData.ok) {
     await rollbackDedupe(dedupe, fingerprint);
     await trackMetric("publish_failed", body);
+    runtimeFailure(__obs, new Error("telegram_publish_failed"), { dealId, status:publishResponse.status });
     return res.status(502).json({
       ok:false,
       published:false,
@@ -1121,6 +1124,7 @@ export default async function handler(req, res) {
     }
   } catch {}
 
+  runtimeSuccess(__obs, { dealId, published:true, telegramMessageId:publishData.telegram_message_id });
   return res.status(200).json({
     ok:true,
     published:true,
