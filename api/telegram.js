@@ -1,4 +1,5 @@
-import { deepLinkUrl, attributionMeta, validateAffiliateLink } from "../lib/affiliate-links.js";
+import { attributionMeta, validateAffiliateLink } from "../lib/affiliate-links.js";
+import { sanitizeForAmazonPublication } from "../lib/amazon-compliance.js";
 import { buildTrackedRedirect } from "../lib/attribution.js";
 import { evaluateAmazonReward } from "../lib/rewards-engine.js";
 
@@ -21,7 +22,9 @@ export default async function handler(req, res) {
     return res.status(500).json({ ok:false, error:"telegram_env_missing" });
   }
 
-  const body = req.body || {};
+  const rawBody = req.body || {};
+  const publication = sanitizeForAmazonPublication(rawBody, Date.now());
+  const body = publication.body;
   const {
     title, price, oldPrice, effectivePrice, discount, coupon, category,
     reason, amazonUrl, imageUrl, asin, dealScore, dealType, prime,
@@ -32,7 +35,7 @@ export default async function handler(req, res) {
   const reward = evaluateAmazonReward(body, Date.now());
   const isReward = reward.isReward;
 
-  if (!title || !amazonUrl || (!isReward && !price)) {
+  if (!title || !amazonUrl) {
     return res.status(400).json({ ok:false, error:"missing_required_fields" });
   }
 
@@ -68,18 +71,11 @@ export default async function handler(req, res) {
     });
   }
 
-  const finalAmazonUrl = deepLinkUrl(affiliateValidation.trackedUrl, "telegram", contentType);
+  const finalAmazonUrl = affiliateValidation.trackedUrl;
   const attribution = attributionMeta("telegram", contentType);
   const protocol = String(req.headers["x-forwarded-proto"] || "https").split(",")[0].trim();
   const origin = req.headers.host ? `${protocol}://${req.headers.host}` : "";
   const dealId = asin || String(title).slice(0, 80);
-  const trackedAmazonUrl = buildTrackedRedirect(origin, {
-    destination:finalAmazonUrl,
-    channel:"telegram",
-    contentType,
-    action:"amazon_click",
-    dealId
-  });
 
   const shareOfferText = [
     "🔥 Guarda questa offerta trovata da AffareRadar Italia",
@@ -90,7 +86,7 @@ export default async function handler(req, res) {
   ].filter(Boolean).join("\n");
 
   const shareOfferUrl =
-    `https://t.me/share/url?url=${encodeURIComponent(trackedAmazonUrl)}&text=${encodeURIComponent(shareOfferText)}`;
+    `https://t.me/share/url?url=${encodeURIComponent(finalAmazonUrl)}&text=${encodeURIComponent(shareOfferText)}`;
   const trackedTelegramShareUrl = buildTrackedRedirect(origin, {
     destination:shareOfferUrl,
     channel:"telegram",
@@ -105,7 +101,7 @@ export default async function handler(req, res) {
     isReward ? (reward.label || "Programma Amazon") : (effectivePrice ? `Prezzo effettivo: ${effectivePrice}` : `Prezzo: ${price}`),
     isReward && reward.rewardAmountEUR != null ? `Ricompensa indicata: €${reward.rewardAmountEUR}` : null,
     !isReward && discount ? `Sconto: ${discount}` : null,
-    trackedAmazonUrl
+    finalAmazonUrl
   ].filter(Boolean).join("\n");
 
   const whatsappShareUrl =
@@ -152,6 +148,7 @@ export default async function handler(req, res) {
     "",
     isReward ? "ℹ️ Requisiti e ricompense possono cambiare: verifica sempre i termini Amazon aggiornati." : "ℹ️ Prezzo, coupon e disponibilità possono cambiare su Amazon.",
     "👍 Utile   🔥 Affare forte   ❌ Non più valido",
+    publication.sanitized ? "ℹ️ Prezzo/promozione non mostrati perché non verificati tramite strumenti Amazon consentiti." : null,
     "📢 Pubblicità — Link affiliato Amazon. Per te nessun costo aggiuntivo."
   ].filter(Boolean);
 
@@ -159,7 +156,7 @@ export default async function handler(req, res) {
   if (caption.length > 1000) caption = caption.slice(0, 997) + "...";
 
   const inlineKeyboard = [
-    [{ text:isReward ? "🎁 Scopri il programma su Amazon" : "🛒 Vedi offerta su Amazon", url:trackedAmazonUrl }],
+    [{ text:isReward ? "🎁 Scopri il programma su Amazon" : "🛒 Vedi offerta su Amazon", url:finalAmazonUrl }],
     [{ text:"📤 Invia l'offerta ad un amico", url:trackedTelegramShareUrl }],
     [{ text:"🟢 Condividi su WhatsApp", url:trackedWhatsappShareUrl }]
   ];
@@ -199,6 +196,12 @@ export default async function handler(req, res) {
     target:channelId ? "channel" : "fallback_chat",
     attribution,
     affiliateValidation,
-    reward:isReward ? reward : null
+    reward:isReward ? reward : null,
+    publicationCompliance:{
+      directAmazonLink:true,
+      priceDisplayAllowed:publication.priceDisplayAllowed,
+      promotionDisplayAllowed:publication.promotionDisplayAllowed,
+      sanitized:publication.sanitized
+    }
   });
 }
