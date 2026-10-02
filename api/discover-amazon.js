@@ -7,6 +7,7 @@ import { sourceReputationKeys, applySourceOutcome } from "../lib/source-reputati
 import { providerHealthDefaults, providerCanAttempt, recordProviderSuccessState, recordProviderFailureState } from "../lib/provider-health.js";
 import crypto from "node:crypto";
 import { startRuntimeObservation, runtimeSuccess, runtimeFailure } from "../lib/runtime-observability.js";
+import { redisConfig, redisCommand } from "../lib/redis-rest.js";
 
 const MARKETPLACE = "www.amazon.it";
 const TOKEN_ENDPOINT = "https://api.amazon.co.uk/auth/o2/token";
@@ -155,28 +156,6 @@ function paItemToDeal(item) {
     lastVerifiedAt:now,
     source:"amazon_pa_api"
   };
-}
-
-function redisConfig() {
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  return url && token ? { url:url.replace(/\/$/, ""), token } : null;
-}
-
-async function redisCommand(command, ...args) {
-  const cfg = redisConfig();
-  if (!cfg) return { configured:false, result:null };
-  const r = await fetch(cfg.url, {
-    method:"POST",
-    headers:{
-      Authorization:`Bearer ${cfg.token}`,
-      "Content-Type":"application/json"
-    },
-    body:JSON.stringify([command, ...args])
-  });
-  if (!r.ok) throw new Error(`redis_${String(command).toLowerCase()}_${r.status}`);
-  const data = await r.json();
-  return { configured:true, result:data.result ?? null };
 }
 
 async function readProviderHealth(provider) {
