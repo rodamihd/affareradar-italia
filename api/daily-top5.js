@@ -102,11 +102,7 @@ export default async function handler(req, res) {
       return [
         `<b>${i+1}. ${esc(e.title || e.asin || e.dealId || "Offerta")}</b>`,
         price ? `💶 ${esc(price)}` : null,
-        Number.isFinite(Number(e.opportunity?.score)) ? `🧠 Opportunity: <b>${Number(e.opportunity.score)}/100</b>` :
-          (Number.isFinite(Number(e.dealScore)) ? `🎯 Deal Score: <b>${Number(e.dealScore)}/100</b>` : null),
-        Number.isFinite(Number(e.revenue?.expectedRevenuePer1000ImpressionsEUR))
-          ? `📈 EV stimato/1000: €${Number(e.revenue.expectedRevenuePer1000ImpressionsEUR).toFixed(2)}`
-          : null,
+        Number.isFinite(Number(e.dealScore)) ? `🎯 Deal Score: <b>${Number(e.dealScore)}/100</b>` : null,
         e.discount ? `📉 ${esc(e.discount)}` : null,
         e.amazonUrl ? `🔗 <a href="${esc(e.amazonUrl)}">Vedi offerta</a>` : null,
         ""
