@@ -94,7 +94,8 @@ export default async function handler(req, res) {
       "policy_blocked",
       "verification_required",
       "opportunity_not_publishable",
-      "safe_mode_blocked"
+      "safe_mode_blocked",
+      "verification_resolved"
     ];
 
     const metricResults = await Promise.all(
@@ -115,7 +116,8 @@ export default async function handler(req, res) {
       multisourceLastRunResult,
       multisourceCandidateCountResult,
       multisourceSourceCountResult,
-      verificationQueueCountResult
+      verificationQueueCountResult,
+      agentOsEventsResult
     ] = await Promise.all([
       redisCommand("ZCARD", "affareradar:queue"),
       redisCommand("LRANGE", "affareradar:events", 0, 49),
@@ -125,12 +127,19 @@ export default async function handler(req, res) {
       redisCommand("GET", "affareradar:multisource:last_run_at"),
       redisCommand("GET", "affareradar:multisource:last_candidate_count"),
       redisCommand("GET", "affareradar:multisource:last_source_count"),
-      redisCommand("ZCARD", "affareradar:verification:queue")
+      redisCommand("ZCARD", "affareradar:verification:queue"),
+      redisCommand("LRANGE", "affareradar:agentos:events", 0, 29)
     ]);
 
     const events = Array.isArray(eventsResult.result)
       ? eventsResult.result.map(item => {
           try { return JSON.parse(item); } catch { return { event:"unknown", raw:item }; }
+        })
+      : [];
+
+    const agentOsEvents = Array.isArray(agentOsEventsResult.result)
+      ? agentOsEventsResult.result.map(item => {
+          try { return JSON.parse(item); } catch { return { eventType:"UNKNOWN", raw:item }; }
         })
       : [];
 
@@ -230,6 +239,10 @@ export default async function handler(req, res) {
       expectedRevenueEngine:true,
       verificationOrchestrator:true,
       safeModeController:true,
+      agentOsDomainAdapter:true,
+      offerLifecycleManager:true,
+      portfolioOptimizer:true,
+      verificationQueueWorker:true,
       complianceEvidenceVault:true,
       authorizedTrafficSources:Boolean(process.env.AMAZON_ASSOCIATES_APPROVED_CHANNELS)
     };
@@ -255,6 +268,7 @@ export default async function handler(req, res) {
       },
       verificationQueueCount:Number(verificationQueueCountResult.result || 0),
       systemMode:String(process.env.AFFARERADAR_SYSTEM_MODE || "AUTO").toUpperCase(),
+      agentOsEvents,
       storefrontCandidates:typeof storefrontCandidates !== "undefined" ? storefrontCandidates : [],
       events,
       telegramHealth
