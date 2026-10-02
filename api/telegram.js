@@ -92,7 +92,10 @@ export default async function handler(req, res) {
     channel:"telegram",
     contentType,
     action:"telegram_share",
-    dealId
+    dealId,
+    category:category || null,
+    source:body.source || rawBody.source || null,
+    dealType:dealType || contentType
   });
 
   const whatsappShareText = [
@@ -111,7 +114,10 @@ export default async function handler(req, res) {
     channel:"telegram",
     contentType,
     action:"whatsapp_share",
-    dealId
+    dealId,
+    category:category || null,
+    source:body.source || rawBody.source || null,
+    dealType:dealType || contentType
   });
 
   const inviteUrl = channelUrl
@@ -123,7 +129,10 @@ export default async function handler(req, res) {
     channel:"telegram",
     contentType,
     action:"channel_invite",
-    dealId
+    dealId,
+    category:category || null,
+    source:body.source || rawBody.source || null,
+    dealType:dealType || contentType
   }) : null;
 
   const lines = [
