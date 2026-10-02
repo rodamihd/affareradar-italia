@@ -181,6 +181,73 @@ async function executeAgentOsTask(req, record) {
   return { ok:false, error:"unsupported_task_execution" };
 }
 
+async function resolveAgentOsApproval(taskId, decision = "APPROVED") {
+  if (!redisConfig()) return { ok:false, error:"redis_required_for_agentos_control" };
+  const tr = await redisCommand("GET", `affareradar:agentos:task:${taskId}`);
+  if (!tr.result) return { ok:false, error:"agentos_task_not_found" };
+
+  let record;
+  try { record = JSON.parse(tr.result); } catch { record = null; }
+  if (!record) return { ok:false, error:"agentos_task_invalid" };
+
+  const normalizedDecision = String(decision || "").trim().toUpperCase();
+  if (!["APPROVED","REJECTED"].includes(normalizedDecision)) {
+    return { ok:false, error:"invalid_approval_decision" };
+  }
+
+  await redisCommand("ZREM", "affareradar:agentos:approvals", taskId);
+
+  if (normalizedDecision === "REJECTED") {
+    const updated = {
+      ...record,
+      approvalStatus:"REJECTED",
+      status:"REJECTED",
+      updatedAt:new Date().toISOString()
+    };
+    await redisCommand("SET", `affareradar:agentos:task:${taskId}`, JSON.stringify(updated), "EX", 604800);
+    await emitAgentOsEvent(agentOsEvent("AFFARERADAR_AGENTOS_TASK_REJECTED", record.payload?.offer || record.input || {}, {
+      lifecycle:"REJECTED",
+      knowledgeStatus:"ACTIVE",
+      payload:{ taskId, taskType:record.taskType }
+    }));
+    return { ok:true, taskId, status:"REJECTED" };
+  }
+
+  const approvedTask = { ...record, approvalStatus:"APPROVED" };
+  const authority = evaluateTaskAuthority(approvedTask, {
+    autonomyLevel:configuredAutonomyLevel(),
+    systemMode:effectiveSystemMode(),
+    hardPolicyBlocked:false
+  });
+
+  if (authority.action !== "EXECUTE") {
+    const updated = {
+      ...approvedTask,
+      authority,
+      status:"REJECTED",
+      updatedAt:new Date().toISOString()
+    };
+    await redisCommand("SET", `affareradar:agentos:task:${taskId}`, JSON.stringify(updated), "EX", 604800);
+    return { ok:false, error:"approval_cannot_override_hard_guard", taskId, authority };
+  }
+
+  const updated = {
+    ...approvedTask,
+    authority,
+    status:"QUEUED",
+    updatedAt:new Date().toISOString()
+  };
+  await redisCommand("SET", `affareradar:agentos:task:${taskId}`, JSON.stringify(updated), "EX", 604800);
+  await redisCommand("ZADD", "affareradar:agentos:tasks", String(taskPriorityScore(updated)), taskId);
+  await emitAgentOsEvent(agentOsEvent("AFFARERADAR_AGENTOS_TASK_APPROVED", record.payload?.offer || record.input || {}, {
+    lifecycle:"QUEUED",
+    knowledgeStatus:"ACTIVE",
+    payload:{ taskId, taskType:record.taskType, authority }
+  }));
+
+  return { ok:true, taskId, status:"QUEUED", authority };
+}
+
 async function processAgentOsTasks(req, limit = 5) {
   if (!redisConfig()) return { ok:false, error:"redis_required_for_agentos_control" };
   const rr = await redisCommand("ZRANGE", "affareradar:agentos:tasks", 0, Math.max(0, Math.min(19, Number(limit || 5) - 1)));
@@ -243,9 +310,17 @@ export default async function handler(req, res) {
 
   if (req.method === "POST") {
     const action = String(req.body?.action || "submit_task").trim().toLowerCase();
+
     if (action === "process_tasks") {
       const processed = await processAgentOsTasks(req, req.body?.limit || 5);
       return res.status(processed.ok ? 200 : 503).json(processed);
+    }
+
+    if (action === "approve_task" || action === "reject_task") {
+      const taskId = String(req.body?.taskId || "").trim();
+      if (!taskId) return res.status(400).json({ ok:false, error:"task_id_required" });
+      const resolved = await resolveAgentOsApproval(taskId, action === "approve_task" ? "APPROVED" : "REJECTED");
+      return res.status(resolved.ok ? 200 : 400).json(resolved);
     }
 
     const queued = await queueAgentOsTask(req.body?.task || req.body || {});
