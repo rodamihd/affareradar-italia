@@ -2,6 +2,7 @@ import { amazonAgentUserAgent } from "../lib/amazon-compliance.js";
 import { agentOsEvent, universalEntityId } from "../lib/agentos-adapter.js";
 import { buildSignalQuarantine, extractAsinFromAmazonUrl } from "../lib/signal-quarantine.js";
 import { offerDagTemplate, dagSummary } from "../lib/agentos-dag.js";
+import { sourceReputationKeys, applySourceOutcome } from "../lib/source-reputation.js";
 
 function authorized(req) {
   const cronSecret = process.env.CRON_SECRET;
@@ -360,24 +361,31 @@ async function createAgentOsDagForSignal(deal) {
   }
 }
 
-async function updateSourceStats(source, publish) {
-  if (!redisConfig() || !source) return;
-  const key = `affareradar:source:stats:${String(source).trim().toLowerCase()}`;
+async function updateSourceStats(deal, publish) {
+  if (!redisConfig() || !deal?.source) return;
   try {
-    const rr = await redisCommand("GET", key);
-    let stats = { total:0, confirmed:0, rejected:0, published:0, verificationRequired:0 };
-    if (rr.result) {
-      try { stats = { ...stats, ...JSON.parse(rr.result) }; } catch {}
-    }
-    stats.total += 1;
     const decision = String(publish?.data?.decision || "").toLowerCase();
     const verificationState = String(publish?.data?.verification?.state || "").toUpperCase();
-    if (publish?.data?.published === true) stats.published += 1;
-    if (verificationState === "VERIFIED") stats.confirmed += 1;
-    if (decision === "verify") stats.verificationRequired += 1;
-    if (decision === "rejected" || publish?.ok === false) stats.rejected += 1;
-    stats.lastUpdatedAt = new Date().toISOString();
-    await redisCommand("SET", key, JSON.stringify(stats), "EX", 2592000);
+    const outcome = {
+      total:1,
+      confirmed:verificationState === "VERIFIED" ? 1 : 0,
+      rejected:(decision === "rejected" || publish?.ok === false) ? 1 : 0,
+      published:publish?.data?.published === true ? 1 : 0,
+      verificationRequired:decision === "verify" ? 1 : 0,
+      falsePositive:0,
+      provider:null,
+      label:decision || "captured"
+    };
+    for (const dimension of sourceReputationKeys(deal)) {
+      const key = `affareradar:source:stats:${dimension.suffix}`;
+      const rr = await redisCommand("GET", key);
+      let stats = {};
+      if (rr.result) {
+        try { stats = JSON.parse(rr.result); } catch {}
+      }
+      const next = applySourceOutcome(stats, outcome);
+      await redisCommand("SET", key, JSON.stringify(next), "EX", 7776000);
+    }
   } catch {}
 }
 
@@ -517,7 +525,7 @@ export default async function handler(req, res) {
         verificationQueue
       }
     };
-    await updateSourceStats(deal.source, publish);
+    await updateSourceStats(deal, publish);
     results.push({
       title:deal.title,
       dealScore:deal.dealScore,
