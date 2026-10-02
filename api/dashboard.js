@@ -878,6 +878,8 @@ export default async function handler(req, res) {
       agentOsDagOrchestrator:true,
       agentOsDagRecovery:true,
       agentOsAsyncTaskSemantics:true,
+      agentOsSelfTest:true,
+      sharedRedisAdapter:true,
       agentOs17_5Profile:true,
       agentOsMixedMode:true,
       agentOsFreshnessSla:true,
