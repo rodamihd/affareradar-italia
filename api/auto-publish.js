@@ -728,7 +728,9 @@ export default async function handler(req, res) {
     policy,
     trafficSource,
     originality,
-    repetition
+    repetition,
+    revenue,
+    outcomeProfile
   }, now);
   const verifyPlan = verificationPlan(body, verification);
   const freshness = freshnessSla(body, verification, now);
