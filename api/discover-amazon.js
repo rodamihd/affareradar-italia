@@ -3,6 +3,8 @@ import { mergeVerifiedAmazonData } from "../lib/amazon-verification-broker.js";
 import { agentOsEvent } from "../lib/agentos-adapter.js";
 import { offerDagTemplate, dagSummary } from "../lib/agentos-dag.js";
 import { extractAsinFromUrl } from "../lib/verification-orchestrator.js";
+import { sourceReputationKeys, applySourceOutcome } from "../lib/source-reputation.js";
+import crypto from "node:crypto";
 
 const MARKETPLACE = "www.amazon.it";
 const TOKEN_ENDPOINT = "https://api.amazon.co.uk/auth/o2/token";
@@ -27,6 +29,129 @@ function creatorsConfig() {
     credentialSecret,
     partnerTag,
     version:process.env.AMAZON_CREATORS_CREDENTIAL_VERSION || "3.2"
+  };
+}
+
+function paConfig() {
+  const accessKey = process.env.AMAZON_PAAPI_ACCESS_KEY;
+  const secretKey = process.env.AMAZON_PAAPI_SECRET_KEY;
+  const partnerTag = process.env.AMAZON_PARTNER_TAG;
+  if (!accessKey || !secretKey || !partnerTag) return null;
+  return {
+    accessKey,
+    secretKey,
+    partnerTag,
+    host:process.env.AMAZON_PAAPI_HOST || "webservices.amazon.it",
+    region:process.env.AMAZON_PAAPI_REGION || "eu-west-1",
+    service:"ProductAdvertisingAPI"
+  };
+}
+
+function sha256(value) {
+  return crypto.createHash("sha256").update(value).digest("hex");
+}
+
+function hmac(key, value, encoding) {
+  return crypto.createHmac("sha256", key).update(value).digest(encoding);
+}
+
+function amzDate(now = new Date()) {
+  return now.toISOString().replace(/[:-]|\.\d{3}/g, "");
+}
+
+async function paGetItem(cfg, asin) {
+  const path = "/paapi5/getitems";
+  const target = "com.amazon.paapi5.v1.ProductAdvertisingAPIv1.GetItems";
+  const now = new Date();
+  const date = amzDate(now);
+  const dateStamp = date.slice(0, 8);
+  const payload = JSON.stringify({
+    ItemIds:[asin],
+    Resources:[
+      "Images.Primary.Medium",
+      "ItemInfo.Title",
+      "Offers.Listings.Availability.Message",
+      "Offers.Listings.Price",
+      "Offers.Listings.SavingBasis"
+    ],
+    PartnerTag:cfg.partnerTag,
+    PartnerType:"Associates",
+    Marketplace:MARKETPLACE
+  });
+  const headers = {
+    "content-encoding":"amz-1.0",
+    "content-type":"application/json; charset=utf-8",
+    host:cfg.host,
+    "x-amz-date":date,
+    "x-amz-target":target
+  };
+  const sorted = Object.keys(headers).sort();
+  const canonicalHeaders = sorted.map(k => `${k}:${headers[k]}\n`).join("");
+  const signedHeaders = sorted.join(";");
+  const canonicalRequest = ["POST", path, "", canonicalHeaders, signedHeaders, sha256(payload)].join("\n");
+  const scope = `${dateStamp}/${cfg.region}/${cfg.service}/aws4_request`;
+  const stringToSign = ["AWS4-HMAC-SHA256", date, scope, sha256(canonicalRequest)].join("\n");
+  const kDate = hmac(Buffer.from(`AWS4${cfg.secretKey}`, "utf8"), dateStamp);
+  const kRegion = hmac(kDate, cfg.region);
+  const kService = hmac(kRegion, cfg.service);
+  const kSigning = hmac(kService, "aws4_request");
+  const signature = hmac(kSigning, stringToSign, "hex");
+  const authorization =
+    `AWS4-HMAC-SHA256 Credential=${cfg.accessKey}/${scope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
+
+  const response = await fetch(`https://${cfg.host}${path}`, {
+    method:"POST",
+    headers:{ ...headers, Authorization:authorization },
+    body:payload
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const detail = data?.Errors?.[0]?.Message || data?.message || `http_${response.status}`;
+    throw new Error(`paapi_getitems_failed:${detail}`);
+  }
+  return data?.ItemsResult?.Items || [];
+}
+
+function paItemToDeal(item) {
+  const listing = item?.Offers?.Listings?.[0];
+  const price = listing?.Price;
+  const basis = listing?.SavingBasis;
+  const title = item?.ItemInfo?.Title?.DisplayValue;
+  const imageUrl = item?.Images?.Primary?.Medium?.URL || null;
+  const pct = Number(price?.Savings?.Percentage || 0);
+  const now = new Date().toISOString();
+  if (!item?.ASIN || !title || !price?.DisplayAmount || !item?.DetailPageURL) return null;
+
+  return {
+    title,
+    price:price.DisplayAmount,
+    oldPrice:basis?.DisplayAmount || null,
+    effectivePrice:price.DisplayAmount,
+    discount:pct > 0 ? `-${Math.round(pct)}%` : null,
+    category:"Amazon",
+    reason:"Verificata tramite Amazon Product Advertising API",
+    amazonUrl:item.DetailPageURL,
+    imageUrl,
+    imageSource:imageUrl ? "pa_api" : null,
+    imageVerifiedByAmazon:Boolean(imageUrl),
+    amazonProgramContent:true,
+    aiTrainingAllowed:false,
+    dataUsagePolicy:"OPERATIONAL_ONLY_NO_TRAINING",
+    asin:item.ASIN,
+    dealScore:Math.max(60, Math.min(100, Math.round(60 + pct * 1.2))),
+    reliabilityScore:96,
+    dealType:"deal",
+    stock:listing?.Availability?.Message
+      ? !/unavailable|non disponibile/i.test(listing.Availability.Message)
+      : true,
+    priceVerified:true,
+    priceSource:"pa_api",
+    amazonDataSource:"pa_api",
+    priceVerifiedByAmazon:true,
+    promotionVerifiedByAmazon:false,
+    couponVerifiedByAmazon:false,
+    lastVerifiedAt:now,
+    source:"amazon_pa_api"
   };
 }
 
@@ -296,7 +421,23 @@ async function advanceAgentOsDag(req, dagId, merged) {
   }
 }
 
-async function processVerificationQueue(req, token, cfg) {
+async function updateSourceVerificationOutcome(body, outcome = {}) {
+  if (!redisConfig() || !body?.source) return;
+  try {
+    for (const dimension of sourceReputationKeys(body)) {
+      const key = `affareradar:source:stats:${dimension.suffix}`;
+      const rr = await redisCommand("GET", key);
+      let stats = {};
+      if (rr.result) {
+        try { stats = JSON.parse(rr.result); } catch {}
+      }
+      const next = applySourceOutcome(stats, outcome);
+      await redisCommand("SET", key, JSON.stringify(next), "EX", 7776000);
+    }
+  } catch {}
+}
+
+async function processVerificationQueue(req, token, cfg, paCfg) {
   if (!redisConfig()) return { processed:0, verified:0, results:[] };
 
   const rr = await redisCommand("ZRANGE", "affareradar:verification:queue", 0, 2);
@@ -332,15 +473,45 @@ async function processVerificationQueue(req, token, cfg) {
     }
 
     try {
-      const items = await searchItems(token, cfg, asin);
-      const exact = items.find(item => String(item?.asin || "").toUpperCase() === asin);
-      const verifiedDeal = exact ? toDeal(exact, `verify:${asin}`) : null;
+      const attempts = [];
+      let verifiedDeal = null;
+      let provider = null;
+
+      if (cfg && token) {
+        try {
+          const items = await searchItems(token, cfg, asin);
+          const exact = items.find(item => String(item?.asin || "").toUpperCase() === asin);
+          verifiedDeal = exact ? toDeal(exact, `verify:${asin}`) : null;
+          attempts.push({ provider:"creators_api", ok:Boolean(verifiedDeal) });
+          if (verifiedDeal) provider = "creators_api";
+        } catch (error) {
+          attempts.push({ provider:"creators_api", ok:false, error:String(error?.message || error) });
+        }
+      }
+
+      if (!verifiedDeal && paCfg) {
+        try {
+          const items = await paGetItem(paCfg, asin);
+          const exact = items.find(item => String(item?.ASIN || "").toUpperCase() === asin);
+          verifiedDeal = exact ? paItemToDeal(exact) : null;
+          attempts.push({ provider:"pa_api", ok:Boolean(verifiedDeal) });
+          if (verifiedDeal) provider = "pa_api";
+        } catch (error) {
+          attempts.push({ provider:"pa_api", ok:false, error:String(error?.message || error) });
+        }
+      }
 
       if (!verifiedDeal) {
-        results.push({ dealId, asin, ok:false, error:"amazon_exact_match_not_found" });
+        await updateSourceVerificationOutcome(queued.body, {
+          rejected:1,
+          falsePositive:1,
+          provider:attempts.at(-1)?.provider || null,
+          label:"verification_miss"
+        });
+        results.push({ dealId, asin, ok:false, error:"amazon_exact_match_not_found", attempts });
         await recordAgentOsEvent(agentOsEvent("AFFARERADAR_VERIFICATION_MISS", queued.body, {
           knowledgeStatus:"PARSED",
-          payload:{ dealId, asin }
+          payload:{ dealId, asin, attempts }
         }));
         continue;
       }
@@ -348,7 +519,7 @@ async function processVerificationQueue(req, token, cfg) {
       const merged = mergeVerifiedAmazonData(queued.body, verifiedDeal);
       merged.verificationQueueDealId = dealId;
       merged.verificationResolvedAt = new Date().toISOString();
-      merged.verificationProvider = "creators_api";
+      merged.verificationProvider = provider;
 
       let publish;
       let dagAdvance = null;
@@ -366,6 +537,11 @@ async function processVerificationQueue(req, token, cfg) {
 
       if (resolved) {
         verified += 1;
+        await updateSourceVerificationOutcome(queued.body, {
+          confirmed:1,
+          provider,
+          label:"verified"
+        });
         await redisCommand("ZREM", "affareradar:verification:queue", dealId);
         await redisCommand("DEL", `affareradar:verification:item:${dealId}`);
         await redisCommand("INCR", "affareradar:metrics:verification_resolved");
@@ -380,11 +556,11 @@ async function processVerificationQueue(req, token, cfg) {
         merged,
         {
           knowledgeStatus:resolved ? "VERIFIED" : "PARSED",
-          payload:{ dealId, asin, publishDecision:publish.data?.decision || null }
+          payload:{ dealId, asin, provider, attempts, publishDecision:publish.data?.decision || null }
         }
       ));
 
-      results.push({ dealId, asin, ok:resolved, publish });
+      results.push({ dealId, asin, ok:resolved, provider, attempts, publish });
     } catch (error) {
       results.push({ dealId, asin, ok:false, error:String(error?.message || error) });
     }
@@ -421,22 +597,31 @@ export default async function handler(req, res) {
   }
 
   const cfg = creatorsConfig();
-  if (!cfg) {
+  const paCfg = paConfig();
+  if (!cfg && !paCfg) {
     return res.status(503).json({
       ok:false,
-      error:"amazon_creators_not_configured",
+      error:"amazon_verification_provider_not_configured",
       required:[
-        "AMAZON_CREATORS_CREDENTIAL_ID",
-        "AMAZON_CREATORS_CREDENTIAL_SECRET",
+        "AMAZON_CREATORS_CREDENTIAL_ID + AMAZON_CREATORS_CREDENTIAL_SECRET",
+        "or AMAZON_PAAPI_ACCESS_KEY + AMAZON_PAAPI_SECRET_KEY",
         "AMAZON_PARTNER_TAG"
       ]
     });
   }
 
   try {
-    const token = await getAccessToken(cfg);
-    const verificationQueue = await processVerificationQueue(req, token, cfg);
-    const queries = searchTerms();
+    const token = cfg ? await getAccessToken(cfg) : null;
+    const verificationQueue = await processVerificationQueue(req, token, cfg, paCfg);
+    if (req.body?.verificationOnly === true) {
+      return res.status(200).json({
+        ok:true,
+        mode:"verification_only",
+        providers:{ creators:Boolean(cfg), paApi:Boolean(paCfg) },
+        verificationQueue
+      });
+    }
+    const queries = cfg ? searchTerms() : [];
     const discovered = [];
     const results = [];
 
@@ -483,7 +668,7 @@ export default async function handler(req, res) {
 
     return res.status(200).json({
       ok:true,
-      source:"amazon_creators_api",
+      source:cfg ? "amazon_creators_api" : "amazon_verification_only",
       marketplace:MARKETPLACE,
       queries,
       discovered:unique.length,
