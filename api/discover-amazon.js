@@ -1,6 +1,7 @@
 import { amazonAgentUserAgent } from "../lib/amazon-compliance.js";
 import { mergeVerifiedAmazonData } from "../lib/amazon-verification-broker.js";
 import { agentOsEvent } from "../lib/agentos-adapter.js";
+import { offerDagTemplate, dagSummary } from "../lib/agentos-dag.js";
 
 const MARKETPLACE = "www.amazon.it";
 const TOKEN_ENDPOINT = "https://api.amazon.co.uk/auth/o2/token";
@@ -210,6 +211,34 @@ async function recordAgentOsEvent(event) {
   } catch {}
 }
 
+async function createAgentOsDagForVerifiedDeal(deal) {
+  if (!redisConfig()) return null;
+  try {
+    const dag = offerDagTemplate(deal, {
+      requirePublishApproval:false,
+      recheckDelaySeconds:Number(process.env.AGENTOS_DAG_RECHECK_SECONDS || 1800)
+    });
+    const verifyNode = dag.nodes.find(node => node.name === "verify");
+    if (verifyNode) {
+      verifyNode.status = "COMPLETED";
+      verifyNode.attempts = 1;
+      verifyNode.completedAt = new Date().toISOString();
+      verifyNode.result = { verified:true, source:"creators_api" };
+    }
+    dag.updatedAt = new Date().toISOString();
+    await redisCommand("SET", `affareradar:agentos:dag:${dag.dagId}`, JSON.stringify(dag), "EX", 604800);
+    await redisCommand("ZADD", "affareradar:agentos:dags", String(Date.parse(dag.updatedAt) || Date.now()), dag.dagId);
+    await recordAgentOsEvent(agentOsEvent("AFFARERADAR_DAG_CREATED", deal, {
+      lifecycle:"RUNNING",
+      knowledgeStatus:"VERIFIED",
+      payload:{ dagId:dag.dagId, summary:dagSummary(dag), trigger:"amazon_verified_discovery" }
+    }));
+    return dag;
+  } catch {
+    return null;
+  }
+}
+
 async function processVerificationQueue(req, token, cfg) {
   if (!redisConfig()) return { processed:0, verified:0, results:[] };
 
@@ -352,12 +381,14 @@ export default async function handler(req, res) {
 
     const maxCandidates = Math.max(1, Math.min(10, Number(process.env.AMAZON_DISCOVERY_MAX_CANDIDATES || 5)));
     for (const deal of unique.slice(0, maxCandidates)) {
+      const dag = await createAgentOsDagForVerifiedDeal(deal);
       const publish = await publishDeal(req, deal);
       results.push({
         asin:deal.asin,
         title:deal.title,
         dealScore:deal.dealScore,
         discount:deal.discount,
+        dag:dag ? { dagId:dag.dagId, status:dag.status } : null,
         publish
       });
     }
