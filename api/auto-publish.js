@@ -3,7 +3,8 @@ import { evaluateStorefrontCandidate, storefrontContent } from "../lib/storefron
 import { creatorQualityScore, publishingWindow } from "../lib/creator-quality.js";
 import { evaluateRepublish } from "../lib/republish-intelligence.js";
 import { evaluateAmazonReward, rewardContent } from "../lib/rewards-engine.js";
-import { evaluateRepetition, evaluateTrafficSource, evidenceRecord } from "../lib/creator-compliance.js";
+import { evaluateRepetition, evaluateTrafficSource, evidenceRecord, transformExternalEditorial, evaluateOriginality } from "../lib/creator-compliance.js";
+import { sanitizeForAmazonPublication } from "../lib/amazon-compliance.js";
 import crypto from "node:crypto";
 
 const memory = globalThis.__affareRadarState || {
@@ -395,8 +396,49 @@ export default async function handler(req, res) {
     return res.status(401).json({ ok:false, error:"unauthorized" });
   }
 
-  const body = req.body || {};
   const now = Date.now();
+  const rawBody = req.body || {};
+  const editorial = transformExternalEditorial(rawBody);
+  const publication = sanitizeForAmazonPublication(editorial.body, now);
+  const body = publication.body;
+  const originality = evaluateOriginality(body);
+
+  if (!originality.passed) {
+    await trackMetric("originality_blocked", body, { originality });
+    return res.status(200).json({
+      ok:true,
+      published:false,
+      decision:"rejected",
+      reason:"originality_transformation_required",
+      lifecycle:"DISCOVERED",
+      originality
+    });
+  }
+
+  const promotionExpiry = body.promotionValidUntil ? Date.parse(body.promotionValidUntil) : null;
+  if (body.promotionTimeLimited === true && Number.isFinite(promotionExpiry) && promotionExpiry < now) {
+    await trackMetric("promotion_expired_blocked", body, { promotionValidUntil:body.promotionValidUntil });
+    return res.status(200).json({
+      ok:true,
+      published:false,
+      decision:"rejected",
+      reason:"promotion_expired",
+      lifecycle:"EXPIRED",
+      promotionValidUntil:body.promotionValidUntil
+    });
+  }
+
+  if (publication.productEligibility && !publication.productEligibility.passed) {
+    await trackMetric("product_excluded_blocked", body, { productEligibility:publication.productEligibility });
+    return res.status(200).json({
+      ok:true,
+      published:false,
+      decision:"rejected",
+      reason:"product_not_eligible",
+      lifecycle:"DISCOVERED",
+      productEligibility:publication.productEligibility
+    });
+  }
 
   const dealScore = Number(body.dealScore);
   const reliabilityScore = Number(body.reliabilityScore);
@@ -660,7 +702,9 @@ export default async function handler(req, res) {
     republish,
     reward:isReward ? reward : null,
     repetition,
-    trafficSource
+    trafficSource,
+    originality,
+    publicationCompliance:publication
   });
 
   try {
@@ -670,6 +714,8 @@ export default async function handler(req, res) {
         publicationCompliance:publishData.publicationCompliance || null,
         repetition,
         trafficSource,
+        originality,
+        publicationCompliance:publishData.publicationCompliance || publication,
         telegramMessageId:publishData.telegram_message_id
       });
       await redisCommand("SET", `affareradar:evidence:${evidence.evidenceId}`, JSON.stringify(evidence), "EX", 7776000);
@@ -703,6 +749,8 @@ export default async function handler(req, res) {
     republish,
     reward:isReward ? reward : null,
     repetition,
-    trafficSource
+    trafficSource,
+    originality,
+    publicationCompliance:publishData.publicationCompliance || publication
   });
 }
