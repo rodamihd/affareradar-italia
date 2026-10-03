@@ -31,6 +31,7 @@ import {
 import crypto from "node:crypto";
 import { startRuntimeObservation, runtimeSuccess, runtimeFailure } from "../lib/runtime-observability.js";
 import { redisConfig, redisCommand } from "../lib/redis-rest.js";
+import { classifyDecisionEvent, recordDecisionEvent } from "../lib/decision-outcome-registry.js";
 
 const memory = globalThis.__affareRadarState || {
   published:new Map(),
@@ -94,6 +95,9 @@ async function trackMetric(event, body, extra = {}) {
         redisCommand("LPUSH", "affareradar:events", JSON.stringify(payload))
       ]);
       await redisCommand("LTRIM", "affareradar:events", 0, 199);
+      if (classifyDecisionEvent(event, extra) !== "OTHER") {
+        await recordDecisionEvent(event, body, { ...extra, dealId:payload.dealId });
+      }
     }
   } catch {}
 }
