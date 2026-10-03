@@ -22,7 +22,7 @@ import {
   releaseManifest,
   knowledgeProposal,
   semanticDecisionCachePolicy
-} from "../lib/agentos-17_5-profile.js";
+} from "../lib/agentos-33_10-profile.js";
 import crypto from "node:crypto";
 import { startRuntimeObservation, runtimeSuccess, runtimeFailure } from "../lib/runtime-observability.js";
 import { redisConfig, redisCommand } from "../lib/redis-rest.js";
@@ -744,7 +744,7 @@ export default async function handler(req, res) {
       ok:true,
       published:false,
       decision:"blocked",
-      reason:"agentos_17_5_egress_guard",
+      reason:"agentos_33_10_egress_guard",
       lifecycle:lifecycleStore.value?.status || "DISCOVERED",
       intent,
       freshness,
