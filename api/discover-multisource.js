@@ -411,7 +411,22 @@ async function enqueueSignalVerification(deal, dag) {
   return { queued:true, dealId, dagId:dag?.dagId || null, plan };
 }
 
+function amazonVerificationProviderConfigured() {
+  const creators = Boolean(
+    process.env.AMAZON_CREATORS_CREDENTIAL_ID &&
+    process.env.AMAZON_CREATORS_CREDENTIAL_SECRET
+  );
+  const paapi = Boolean(
+    process.env.AMAZON_PAAPI_ACCESS_KEY &&
+    process.env.AMAZON_PAAPI_SECRET_KEY
+  );
+  return creators || paapi;
+}
+
 async function wakeVerificationWorker(req) {
+  if (String(process.env.AFFARERADAR_PRE_API_MODE || "").trim() === "1" && !amazonVerificationProviderConfigured()) {
+    return { triggered:false, reason:"preapi_no_amazon_provider" };
+  }
   const host = req.headers.host;
   const secret = process.env.PUBLISH_SECRET;
   if (!host || !secret) return { triggered:false, reason:"host_or_secret_missing" };
