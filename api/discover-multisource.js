@@ -31,6 +31,22 @@ function sourceUrls() {
   return [...new Set([...(configured.length ? configured : defaults)])].slice(0, 12);
 }
 
+
+function sourceIdentity(rawUrl) {
+  try {
+    const u = new URL(rawUrl);
+    const host = u.hostname.toLowerCase();
+    if (host === "t.me" || host === "telegram.me") {
+      const parts = u.pathname.split("/").filter(Boolean);
+      const channel = parts[0] === "s" ? parts[1] : parts[0];
+      return channel ? `telegram:${channel.toLowerCase()}` : "telegram:unknown";
+    }
+    return host;
+  } catch {
+    return "unknown";
+  }
+}
+
 function decodeHtml(s) {
   return String(s || "")
     .replace(/&amp;/g, "&")
@@ -281,7 +297,7 @@ async function fetchSource(url) {
 
   const type = String(r.headers.get("content-type") || "").toLowerCase();
   const text = await r.text();
-  const source = new URL(url).hostname;
+  const source = sourceIdentity(url);
 
   if (type.includes("application/json") || /^[\s\n]*[\[{]/.test(text)) {
     const data = JSON.parse(text);
