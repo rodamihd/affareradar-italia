@@ -673,6 +673,11 @@ export default async function handler(req, res) {
         asin:asin || null,
         consensusSources:[source],
         consensusSourceCount:1,
+        consensusObservations:[{
+          source,
+          observedAt:candidate.lastVerifiedAt || candidate.publishedAt || null,
+          dealScore:Number(candidate.dealScore || 0)
+        }],
         rawDealScore:Number(candidate.dealScore || 0)
       });
       continue;
@@ -681,6 +686,12 @@ export default async function handler(req, res) {
     if (!existing.consensusSources.includes(source)) {
       existing.consensusSources.push(source);
       existing.consensusSourceCount = existing.consensusSources.length;
+      existing.consensusObservations = Array.isArray(existing.consensusObservations) ? existing.consensusObservations : [];
+      existing.consensusObservations.push({
+        source,
+        observedAt:candidate.lastVerifiedAt || candidate.publishedAt || null,
+        dealScore:Number(candidate.dealScore || 0)
+      });
     }
     if (Number(candidate.dealScore || 0) > Number(existing.rawDealScore || 0)) {
       existing.title = candidate.title || existing.title;
@@ -694,9 +705,23 @@ export default async function handler(req, res) {
 
   const unique = [...consensusGroups.values()].map(deal => {
     const count = Math.max(1, Number(deal.consensusSourceCount || 1));
-    const boost = count >= 4 ? 8 : count === 3 ? 6 : count === 2 ? 3 : 0;
     const raw = Number(deal.rawDealScore || deal.dealScore || 0);
+    const observations = Array.isArray(deal.consensusObservations) ? deal.consensusObservations : [];
+    const timestamps = observations
+      .map(x => Date.parse(x?.observedAt || ""))
+      .filter(Number.isFinite);
+    const freshnessSpanMs = timestamps.length >= 2 ? Math.max(...timestamps) - Math.min(...timestamps) : 0;
+    const freshnessAligned = timestamps.length < 2 || freshnessSpanMs <= 6 * 60 * 60 * 1000;
+    const observedScores = observations
+      .map(x => Number(x?.dealScore))
+      .filter(Number.isFinite);
+    const scoreSpread = observedScores.length >= 2 ? Math.max(...observedScores) - Math.min(...observedScores) : 0;
+    const scoreAgreement = observedScores.length < 2 || scoreSpread <= 25;
+    const exactProductIdentity = /^[A-Z0-9]{10}$/.test(String(deal.asin || ""));
+    const corroborated = count >= 2 && exactProductIdentity && freshnessAligned && scoreAgreement;
+    const boost = corroborated ? (count >= 4 ? 6 : count === 3 ? 4 : 2) : 0;
     const consensusScore = Math.max(0, Math.min(100, Math.round(raw + boost)));
+
     return {
       ...deal,
       dealScore:consensusScore,
@@ -706,10 +731,19 @@ export default async function handler(req, res) {
         rawDealScore:raw,
         boost,
         consensusScore,
-        level:count >= 4 ? "STRONG" : count === 3 ? "HIGH" : count === 2 ? "MEDIUM" : "SINGLE_SOURCE"
+        exactProductIdentity,
+        freshnessAligned,
+        freshnessSpanMinutes:Math.round(freshnessSpanMs / 60000),
+        scoreAgreement,
+        scoreSpread,
+        corroborated,
+        level:corroborated
+          ? (count >= 4 ? "STRONG" : count === 3 ? "HIGH" : "MEDIUM")
+          : (count >= 2 ? "UNCONFIRMED_MULTI_SOURCE" : "SINGLE_SOURCE")
       }
     };
   }).sort((a,b) =>
+    Number(b.crossSourceConsensus?.corroborated === true) - Number(a.crossSourceConsensus?.corroborated === true) ||
     Number(b.crossSourceConsensus?.sourceCount || 1) - Number(a.crossSourceConsensus?.sourceCount || 1) ||
     Number(b.dealScore || 0) - Number(a.dealScore || 0)
   );
