@@ -570,24 +570,47 @@ async function submitPreApi(req, deal) {
   }
 
   const maxPerDay = Math.max(1, Math.min(3, Number(process.env.PREAPI_MAX_PER_DAY || 1)));
-  const day = new Date().toISOString().slice(0, 10);
+  const now = new Date();
+  const localOffsetHours = Number(process.env.AFFARERADAR_LOCAL_UTC_OFFSET_HOURS || 2);
+  const localHour = (now.getUTCHours() + localOffsetHours + 24) % 24;
+  const slot =
+    localHour >= 6 && localHour < 12 ? "morning" :
+    localHour >= 12 && localHour < 18 ? "afternoon" :
+    localHour >= 18 && localHour < 24 ? "evening" :
+    null;
+
+  if (!slot) {
+    return { attempted:true, ok:true, status:200, data:{ published:false, decision:"held", reason:"outside_publication_window", localHour } };
+  }
+
+  const day = now.toISOString().slice(0, 10);
   const dayKey = `affareradar:preapi:day:${day}`;
+  const slotKey = `affareradar:preapi:slot:${day}:${slot}`;
   const asinKey = `affareradar:preapi:asin:${asin}`;
   try {
-    const [count, seen] = await Promise.all([
+    const [count, seen, slotSeen] = await Promise.all([
       redisCommand("GET", dayKey),
-      redisCommand("GET", asinKey)
+      redisCommand("GET", asinKey),
+      redisCommand("GET", slotKey)
     ]);
     if (seen.result) return { attempted:true, ok:true, status:200, data:{ published:false, decision:"held", reason:"duplicate_asin_24h" } };
+    if (slotSeen.result) return { attempted:true, ok:true, status:200, data:{ published:false, decision:"held", reason:"slot_already_used", slot } };
     if (Number(count.result || 0) >= maxPerDay) return { attempted:true, ok:true, status:200, data:{ published:false, decision:"held", reason:"daily_limit", maxPerDay } };
 
-    const lock = await redisCommand("SET", asinKey, new Date().toISOString(), "NX", "EX", 86400);
-    if (lock.result !== "OK") return { attempted:true, ok:true, status:200, data:{ published:false, decision:"held", reason:"duplicate_asin_24h" } };
+    const slotLock = await redisCommand("SET", slotKey, asin, "NX", "EX", 172800);
+    if (slotLock.result !== "OK") return { attempted:true, ok:true, status:200, data:{ published:false, decision:"held", reason:"slot_already_used", slot } };
+
+    const lock = await redisCommand("SET", asinKey, now.toISOString(), "NX", "EX", 86400);
+    if (lock.result !== "OK") {
+      await redisCommand("DEL", slotKey);
+      return { attempted:true, ok:true, status:200, data:{ published:false, decision:"held", reason:"duplicate_asin_24h" } };
+    }
 
     const inc = await redisCommand("INCR", dayKey);
     await redisCommand("EXPIRE", dayKey, 172800);
     if (Number(inc.result || 0) > maxPerDay) {
       await redisCommand("DEL", asinKey);
+      await redisCommand("DEL", slotKey);
       return { attempted:true, ok:true, status:200, data:{ published:false, decision:"held", reason:"daily_limit", maxPerDay } };
     }
 
@@ -595,6 +618,7 @@ async function submitPreApi(req, deal) {
     const secret = process.env.PUBLISH_SECRET;
     if (!host || !secret) {
       await redisCommand("DEL", asinKey);
+      await redisCommand("DEL", slotKey);
       await redisCommand("DECR", dayKey);
       return { attempted:true, ok:false, status:0, data:{ published:false, reason:"host_or_secret_missing" } };
     }
@@ -612,6 +636,7 @@ async function submitPreApi(req, deal) {
 
     if (!response.ok || data.ok !== true) {
       await redisCommand("DEL", asinKey);
+      await redisCommand("DEL", slotKey);
       await redisCommand("DECR", dayKey);
       return { attempted:true, ok:true, status:200, data:{ published:false, decision:"failed", reason:"telegram_publish_failed", status:response.status } };
     }
@@ -636,7 +661,9 @@ async function submitPreApi(req, deal) {
           imageSuppressed:true,
           sourceVerified:true,
           productEligibility:eligibility.status,
-          dailyLimit:maxPerDay
+          dailyLimit:maxPerDay,
+          publicationSlot:slot,
+          localHour
         }
       }
     };
