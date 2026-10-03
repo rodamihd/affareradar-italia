@@ -173,7 +173,8 @@ async function loadData(){
       ['Engagement',outcomes.engagements||0],
       ['Queued',decisions.QUEUED||0],
       ['Verify',decisions.VERIFY||0],
-      ['Hold/Defer',(decisions.HOLD||0)+(decisions.DEFER||0)]
+      ['Hold/Defer',(decisions.HOLD||0)+(decisions.DEFER||0)],
+      ['Experiment',mc.championChallenger?.verdict||'INSUFFICIENT_EVIDENCE']
     ].forEach(([name,value])=>{
       const s=document.createElement('span');
       s.className='pill';
