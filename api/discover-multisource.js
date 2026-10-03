@@ -1,4 +1,4 @@
-import { amazonAgentUserAgent } from "../lib/amazon-compliance.js";
+import { amazonAgentUserAgent, evaluateProductEligibility } from "../lib/amazon-compliance.js";
 import { agentOsEvent, universalEntityId } from "../lib/agentos-adapter.js";
 import { buildSignalQuarantine, extractAsinFromAmazonUrl } from "../lib/signal-quarantine.js";
 import { offerDagTemplate, dagSummary } from "../lib/agentos-dag.js";
@@ -449,23 +449,143 @@ async function submitPreApi(req, deal) {
   if (String(process.env.AFFARERADAR_PRE_API_MODE || "").trim() !== "1") {
     return { attempted:false, ok:true, status:0, data:{ published:false, reason:"preapi_mode_disabled" } };
   }
-  const host = req.headers.host;
-  const secret = process.env.PUBLISH_SECRET;
-  if (!host || !secret) {
-    return { attempted:true, ok:false, status:0, data:{ published:false, reason:"host_or_secret_missing" } };
-  }
-  const protocol = String(req.headers["x-forwarded-proto"] || "https").split(",")[0].trim();
+
+  const signalScore = Number(deal.dealScore);
+  const minSignalScore = Math.max(80, Math.min(100, Number(process.env.PREAPI_MIN_SIGNAL_SCORE || 92)));
+  const asin = String(deal.asin || "").trim().toUpperCase();
+  let amazonUrl = null;
   try {
-    const r = await fetch(`${protocol}://${host}/api/preapi-publish`, {
+    const u = new URL(deal.amazonUrl || "");
+    const host = u.hostname.toLowerCase();
+    if (host === "amazon.it" || host.endsWith(".amazon.it")) amazonUrl = u.toString();
+  } catch {}
+
+  if (!amazonUrl || !/^[A-Z0-9]{10}$/.test(asin)) {
+    return { attempted:true, ok:true, status:200, data:{ published:false, decision:"rejected", reason:"amazon_product_identity_required" } };
+  }
+  if (deal.sourceVerified !== true) {
+    return { attempted:true, ok:true, status:200, data:{ published:false, decision:"rejected", reason:"source_not_verified" } };
+  }
+  if (!Number.isFinite(signalScore) || signalScore < minSignalScore) {
+    return { attempted:true, ok:true, status:200, data:{ published:false, decision:"rejected", reason:"preapi_signal_score_below_threshold", threshold:minSignalScore, signalScore:Number.isFinite(signalScore) ? signalScore : null } };
+  }
+  if (!redisConfig()) {
+    return { attempted:true, ok:true, status:200, data:{ published:false, decision:"held", reason:"redis_required" } };
+  }
+
+  const clean = value => String(value || "")
+    .replace(/https?:\/\/\S+/gi, " ")
+    .replace(/(?:EUR|€)\s*\d{1,5}(?:[.,]\d{1,2})?/gi, " ")
+    .replace(/\d{1,5}(?:[.,]\d{1,2})?\s*(?:EUR|€)/gi, " ")
+    .replace(/(?:-|−)?\s*\d{1,3}\s*%/g, " ")
+    .replace(/\b(?:minimo storico|prezzo minimo|price error|errore(?: di)? prezzo|coupon|codice sconto|stack promo|offerta imperdibile|affare pazzesco)\b/gi, " ")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+
+  const candidate = {
+    title:clean(deal.title).slice(0, 140) || `Prodotto Amazon ${asin}`,
+    category:clean(deal.category).slice(0, 60) || "Amazon",
+    reason:"Segnalazione prodotto selezionata da AffareRadar. Prezzo e disponibilità vanno verificati direttamente su Amazon.",
+    amazonUrl,
+    asin,
+    dealType:"preapi_pick",
+    source:deal.source || "external_signal",
+    sourceVerified:true,
+    price:null,
+    oldPrice:null,
+    effectivePrice:null,
+    discount:null,
+    coupon:null,
+    stack:null,
+    historicalLow:false,
+    prime:false,
+    imageUrl:null,
+    imageSource:null,
+    imageSuppressed:true,
+    suppressPriceDisplay:true,
+    preApiMode:true,
+    commercialClaimsSuppressed:true,
+    signalScore,
+    dealScore:null,
+    reliabilityScore:null
+  };
+
+  const eligibility = evaluateProductEligibility(candidate);
+  if (!eligibility.passed) {
+    return { attempted:true, ok:true, status:200, data:{ published:false, decision:"rejected", reason:"product_not_eligible", productEligibility:eligibility } };
+  }
+
+  const maxPerDay = Math.max(1, Math.min(3, Number(process.env.PREAPI_MAX_PER_DAY || 1)));
+  const day = new Date().toISOString().slice(0, 10);
+  const dayKey = `affareradar:preapi:day:${day}`;
+  const asinKey = `affareradar:preapi:asin:${asin}`;
+  try {
+    const [count, seen] = await Promise.all([
+      redisCommand("GET", dayKey),
+      redisCommand("GET", asinKey)
+    ]);
+    if (seen.result) return { attempted:true, ok:true, status:200, data:{ published:false, decision:"held", reason:"duplicate_asin_24h" } };
+    if (Number(count.result || 0) >= maxPerDay) return { attempted:true, ok:true, status:200, data:{ published:false, decision:"held", reason:"daily_limit", maxPerDay } };
+
+    const lock = await redisCommand("SET", asinKey, new Date().toISOString(), "NX", "EX", 86400);
+    if (lock.result !== "OK") return { attempted:true, ok:true, status:200, data:{ published:false, decision:"held", reason:"duplicate_asin_24h" } };
+
+    const inc = await redisCommand("INCR", dayKey);
+    await redisCommand("EXPIRE", dayKey, 172800);
+    if (Number(inc.result || 0) > maxPerDay) {
+      await redisCommand("DEL", asinKey);
+      return { attempted:true, ok:true, status:200, data:{ published:false, decision:"held", reason:"daily_limit", maxPerDay } };
+    }
+
+    const host = req.headers.host;
+    const secret = process.env.PUBLISH_SECRET;
+    if (!host || !secret) {
+      await redisCommand("DEL", asinKey);
+      await redisCommand("DECR", dayKey);
+      return { attempted:true, ok:false, status:0, data:{ published:false, reason:"host_or_secret_missing" } };
+    }
+
+    const protocol = String(req.headers["x-forwarded-proto"] || "https").split(",")[0].trim();
+    const response = await fetch(`${protocol}://${host}/api/telegram`, {
       method:"POST",
       headers:{
         "Content-Type":"application/json",
         "x-affareradar-secret":secret
       },
-      body:JSON.stringify(deal)
+      body:JSON.stringify(candidate)
     });
-    const data = await r.json().catch(() => ({}));
-    return { attempted:true, ok:r.ok, status:r.status, data };
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok || data.ok !== true) {
+      await redisCommand("DEL", asinKey);
+      await redisCommand("DECR", dayKey);
+      return { attempted:true, ok:true, status:200, data:{ published:false, decision:"failed", reason:"telegram_publish_failed", status:response.status } };
+    }
+
+    await redisCommand("SET", "affareradar:preapi:last_publish_at", new Date().toISOString(), "EX", 172800);
+    await redisCommand("SET", "affareradar:preapi:last_asin", asin, "EX", 172800);
+
+    return {
+      attempted:true,
+      ok:true,
+      status:200,
+      data:{
+        ok:true,
+        published:true,
+        decision:"preapi_published",
+        asin,
+        telegramMessageId:data.telegram_message_id || null,
+        signalScore,
+        safeguards:{
+          priceSuppressed:true,
+          promotionSuppressed:true,
+          imageSuppressed:true,
+          sourceVerified:true,
+          productEligibility:eligibility.status,
+          dailyLimit:maxPerDay
+        }
+      }
+    };
   } catch (error) {
     return { attempted:true, ok:false, status:0, data:{ published:false, reason:String(error?.message || error) } };
   }
