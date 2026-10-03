@@ -635,33 +635,73 @@ export default async function handler(req, res) {
     }
   }
 
-  const unique = [];
-  const seen = new Set();
-  for (const deal of candidates.sort((a,b) => Number(b.dealScore || 0) - Number(a.dealScore || 0))) {
-    const key = deal.asin || deal.amazonUrl;
-    if (!key || seen.has(key)) continue;
-    seen.add(key);
-    unique.push(deal);
+  const consensusGroups = new Map();
+  const resolutionLimit = Math.max(12, Math.min(60, Number(process.env.MULTISOURCE_RESOLUTION_LIMIT || 40)));
+
+  for (const candidate of candidates
+    .sort((a,b) => Number(b.dealScore || 0) - Number(a.dealScore || 0))
+    .slice(0, resolutionLimit)) {
+    const resolvedUrl = await resolveAmazonUrl(candidate.amazonUrl);
+    if (!resolvedUrl) continue;
+
+    const asin = candidate.asin || extractAsinFromAmazonUrl(resolvedUrl);
+    const key = asin || resolvedUrl.split("?")[0];
+    if (!key) continue;
+
+    const source = String(candidate.source || "unknown");
+    const existing = consensusGroups.get(key);
+    if (!existing) {
+      consensusGroups.set(key, {
+        ...candidate,
+        amazonUrl:resolvedUrl,
+        asin:asin || null,
+        consensusSources:[source],
+        consensusSourceCount:1,
+        rawDealScore:Number(candidate.dealScore || 0)
+      });
+      continue;
+    }
+
+    if (!existing.consensusSources.includes(source)) {
+      existing.consensusSources.push(source);
+      existing.consensusSourceCount = existing.consensusSources.length;
+    }
+    if (Number(candidate.dealScore || 0) > Number(existing.rawDealScore || 0)) {
+      existing.title = candidate.title || existing.title;
+      existing.category = candidate.category || existing.category;
+      existing.reason = candidate.reason || existing.reason;
+      existing.rawDealScore = Number(candidate.dealScore || 0);
+      existing.dealType = candidate.dealType || existing.dealType;
+      existing.historicalLow = candidate.historicalLow === true || existing.historicalLow === true;
+    }
   }
+
+  const unique = [...consensusGroups.values()].map(deal => {
+    const count = Math.max(1, Number(deal.consensusSourceCount || 1));
+    const boost = count >= 4 ? 8 : count === 3 ? 6 : count === 2 ? 3 : 0;
+    const raw = Number(deal.rawDealScore || deal.dealScore || 0);
+    const consensusScore = Math.max(0, Math.min(100, Math.round(raw + boost)));
+    return {
+      ...deal,
+      dealScore:consensusScore,
+      crossSourceConsensus:{
+        sourceCount:count,
+        sources:deal.consensusSources,
+        rawDealScore:raw,
+        boost,
+        consensusScore,
+        level:count >= 4 ? "STRONG" : count === 3 ? "HIGH" : count === 2 ? "MEDIUM" : "SINGLE_SOURCE"
+      }
+    };
+  }).sort((a,b) =>
+    Number(b.crossSourceConsensus?.sourceCount || 1) - Number(a.crossSourceConsensus?.sourceCount || 1) ||
+    Number(b.dealScore || 0) - Number(a.dealScore || 0)
+  );
 
   const maxCandidates = Math.max(1, Math.min(12, Number(process.env.MULTISOURCE_MAX_CANDIDATES || 6)));
   const results = [];
 
   for (const deal of unique.slice(0, maxCandidates)) {
-    const resolvedUrl = await resolveAmazonUrl(deal.amazonUrl);
-
-    if (!resolvedUrl) {
-      results.push({
-        title:deal.title,
-        dealScore:deal.dealScore,
-        source:deal.source,
-        publish:{ ok:false, status:0, data:{ error:"amazon_url_resolution_failed" } }
-      });
-      continue;
-    }
-
-    deal.amazonUrl = resolvedUrl;
-    deal.asin = deal.asin || extractAsinFromAmazonUrl(resolvedUrl);
     deal.signalObservedAt = deal.lastVerifiedAt || new Date().toISOString();
     deal.signalClaims = buildSignalQuarantine(deal, Date.now());
     deal.quarantineState = "PARSED";
@@ -682,7 +722,8 @@ export default async function handler(req, res) {
         verificationRequired:true,
         sourceVerified:deal.sourceVerified === true,
         quarantineId:deal.signalClaims?.quarantineId || null,
-        quarantineStored:quarantine.stored === true
+        quarantineStored:quarantine.stored === true,
+        crossSourceConsensus:deal.crossSourceConsensus || null
       }
     }));
     const dag = await createAgentOsDagForSignal(deal);
@@ -708,6 +749,7 @@ export default async function handler(req, res) {
       title:deal.title,
       dealScore:deal.dealScore,
       source:deal.source,
+      consensus:deal.crossSourceConsensus || null,
       quarantine:deal.signalClaims ? {
         quarantineId:deal.signalClaims.quarantineId,
         state:deal.signalClaims.state,
@@ -733,11 +775,19 @@ export default async function handler(req, res) {
     }
   } catch {}
 
-  runtimeSuccess(__obs, { sources:sources.length, candidates:unique.length, submitted:results.length });
+  runtimeSuccess(__obs, {
+    sources:sources.length,
+    rawCandidates:candidates.length,
+    consensusCandidates:unique.length,
+    multiSourceCandidates:unique.filter(x => Number(x.crossSourceConsensus?.sourceCount || 1) >= 2).length,
+    submitted:results.length
+  });
   return res.status(200).json({
     ok:true,
     sources:sourceResults,
     candidates:unique.length,
+    rawCandidates:candidates.length,
+    multiSourceCandidates:unique.filter(x => Number(x.crossSourceConsensus?.sourceCount || 1) >= 2).length,
     submitted:results.length,
     verificationWakeup,
     results
