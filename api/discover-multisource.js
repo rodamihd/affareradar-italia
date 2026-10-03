@@ -6,6 +6,7 @@ import { startRuntimeObservation, runtimeSuccess, runtimeFailure } from "../lib/
 import { redisConfig, redisCommand } from "../lib/redis-rest.js";
 import { runAgentOsSelfTest } from "../lib/agentos-selftest.js";
 import { sourceReputationKeys, applySourceOutcome } from "../lib/source-reputation.js";
+// PREAPI_RUNTIME_CONFIG_V2
 
 function authorized(req) {
   const cronSecret = process.env.CRON_SECRET;
