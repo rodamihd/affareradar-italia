@@ -1,6 +1,7 @@
 import { verifyTrackedPayload } from "../lib/attribution.js";
 import { redisConfig, redisCommand } from "../lib/redis-rest.js";
 import { outcomeDimensions } from "../lib/outcome-learning.js";
+import { recordOutcomeRegistryEvent } from "../lib/decision-outcome-registry.js";
 
 function safeDestination(value) {
   try {
@@ -56,6 +57,19 @@ export default async function handler(req, res) {
       ]);
 
       await redisCommand("LTRIM", "affareradar:events", 0, 199);
+
+      await recordOutcomeRegistryEvent({
+        dealId:event.dealId,
+        occurredAt:event.at,
+        reportSource:"affareradar_click",
+        body:{
+          category:data.category || "other",
+          source:data.source || "telegram",
+          dealType:data.dealType || data.contentType || "deal"
+        },
+        clicks:event.action === "amazon_click" ? 1 : 0,
+        engagements:["telegram_share","whatsapp_share","channel_invite"].includes(event.action) ? 1 : 0
+      });
 
       if (["telegram_share","whatsapp_share","channel_invite"].includes(event.action)) {
         const outcomeContext = {

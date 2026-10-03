@@ -20,6 +20,7 @@ import {
 } from "../lib/agentos-dag.js";
 import { startRuntimeObservation, runtimeSuccess, runtimeFailure } from "../lib/runtime-observability.js";
 import { redisConfig, redisCommand } from "../lib/redis-rest.js";
+import { missionControlSnapshot, recordOutcomeRegistryEvent } from "../lib/decision-outcome-registry.js";
 
 function authorized(req) {
   const secret = process.env.PUBLISH_SECRET;
@@ -77,6 +78,7 @@ async function recordOutcomeEvent(input = {}) {
   };
   await redisCommand("LPUSH", "affareradar:outcome:ledger", JSON.stringify(ledger));
   await redisCommand("LTRIM", "affareradar:outcome:ledger", 0, 999);
+  await recordOutcomeRegistryEvent({ ...input, body, dealId:ledger.dealId, occurredAt:ledger.occurredAt });
   return { ok:true, touched, ledger };
 }
 
@@ -1007,7 +1009,15 @@ export default async function handler(req, res) {
       verificationWorkerWakeup:true,
       agentOsSelfTest:true,
       sharedRedisAdapter:true,
-      agentOs17_5Profile:true,
+      agentOs33_10Profile:true,
+      missionControl:true,
+      decisionOutcomeRegistry:true,
+      automaticOutcomeRegistry:true,
+      dealPerformanceScore:true,
+      championChallengerShadow:true,
+      continuousEdgeValidation:true,
+      profitLearningShadow:true,
+      autonomyPromotionGate:true,
       agentOsMixedMode:true,
       agentOsFreshnessSla:true,
       agentOsEgressGuard:true,
@@ -1025,6 +1035,8 @@ export default async function handler(req, res) {
       complianceEvidenceVault:true,
       authorizedTrafficSources:Boolean(process.env.AMAZON_ASSOCIATES_APPROVED_CHANNELS)
     };
+
+    const missionControl = await missionControlSnapshot();
 
     runtimeSuccess(__obs, { redisConfigured:true, queueCount:Number(queueCountResult.result || 0), verificationQueueCount:Number(verificationQueueCountResult.result || 0) });
     return res.status(200).json({
@@ -1053,7 +1065,7 @@ export default async function handler(req, res) {
       },
       verificationQueueCount:Number(verificationQueueCountResult.result || 0),
       agentOsControl:{
-        agentOsVersion:"17.5",
+        agentOsVersion:"33.10",
         autonomyLevel:configuredAutonomyLevel(),
         supportedTasks:taskRegistry(),
         queuedTasks:Number(agentOsTaskCountResult.result || 0),
@@ -1063,6 +1075,7 @@ export default async function handler(req, res) {
       },
       systemMode:String(process.env.AFFARERADAR_SYSTEM_MODE || "AUTO").toUpperCase(),
       agentOsEvents,
+      missionControl,
       storefrontCandidates:typeof storefrontCandidates !== "undefined" ? storefrontCandidates : [],
       events,
       telegramHealth

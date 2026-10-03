@@ -50,6 +50,21 @@
       <div class="card"><div class="num" id="rejected">0</div><div class="label">Sotto soglia</div></div>
       <div class="card"><div class="num" id="failed">0</div><div class="label">Errori pubblicazione</div></div>
       <div class="card"><div class="num" id="attributionClicks">0</div><div class="label">Click tracciati</div></div>
+      <div class="card"><div class="num" id="mcPublished">0</div><div class="label">Decisioni PUBLISHED</div></div>
+      <div class="card"><div class="num" id="mcBlocked">0</div><div class="label">Decisioni BLOCK/REJECT</div></div>
+      <div class="card"><div class="num" id="mcRevenue">€0.00</div><div class="label">Revenue registrata</div></div>
+    </div>
+
+    <div class="panel">
+      <strong>Mission Control · Decision & Outcome Registry</strong>
+      <div class="muted" style="margin-top:6px">Vista end-to-end delle decisioni AgentOS 33.10 e degli outcome realmente registrati.</div>
+      <div class="statusrow" id="missionSummary"></div>
+      <div style="overflow:auto;margin-top:12px">
+        <table>
+          <thead><tr><th>Quando</th><th>Azione</th><th>Deal</th><th>Motivo</th><th>Opportunity</th><th>Prediction</th><th>RPM</th></tr></thead>
+          <tbody id="missionDecisions"></tbody>
+        </table>
+      </div>
     </div>
 
     <div class="panel">
@@ -141,6 +156,40 @@ async function loadData(){
     document.getElementById('rejected').textContent=m.rejected_below_threshold||0;
     document.getElementById('failed').textContent=m.publish_failed||0;
     document.getElementById('attributionClicks').textContent=m.attribution_click||0;
+
+    const mc=d.missionControl||{};
+    const decisions=mc.decisions||{};
+    const outcomes=mc.outcomes||{};
+    document.getElementById('mcPublished').textContent=decisions.PUBLISHED||0;
+    document.getElementById('mcBlocked').textContent=(decisions.BLOCK||0)+(decisions.REJECT||0);
+    document.getElementById('mcRevenue').textContent='€'+Number(outcomes.revenueEUR||0).toFixed(2);
+
+    const missionSummary=document.getElementById('missionSummary');
+    missionSummary.innerHTML='';
+    [
+      ['Impression',outcomes.impressions||0],
+      ['Click',outcomes.clicks||0],
+      ['Conversioni',outcomes.conversions||0],
+      ['Engagement',outcomes.engagements||0],
+      ['Queued',decisions.QUEUED||0],
+      ['Verify',decisions.VERIFY||0],
+      ['Hold/Defer',(decisions.HOLD||0)+(decisions.DEFER||0)],
+      ['Experiment',mc.championChallenger?.verdict||'INSUFFICIENT_EVIDENCE']
+    ].forEach(([name,value])=>{
+      const s=document.createElement('span');
+      s.className='pill';
+      s.textContent=name+': '+value;
+      missionSummary.appendChild(s);
+    });
+
+    const missionBody=document.getElementById('missionDecisions');
+    missionBody.innerHTML='';
+    (mc.recentDecisions||[]).slice(0,25).forEach(row=>{
+      const tr=document.createElement('tr');
+      tr.innerHTML='<td>'+esc(row.at||'')+'</td><td>'+esc(row.action||'')+'</td><td>'+esc(row.offer?.title||row.offer?.asin||row.dealId||'')+'</td><td>'+esc(row.reason||'')+'</td><td>'+esc(row.opportunityScore??'')+'</td><td>'+esc(row.predictionScore??'')+'</td><td>'+esc(row.revenueRPM??'')+'</td>';
+      missionBody.appendChild(tr);
+    });
+
     document.getElementById('status').innerHTML =
       'Redis: <b class="'+(d.redisConfigured?'ok':'bad')+'">'+(d.redisConfigured?'attivo':'non configurato')+'</b>';
 

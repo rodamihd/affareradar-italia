@@ -8,15 +8,15 @@
   "crons": [
     {
       "path": "/api/discover-amazon",
-      "schedule": "0 13 * * *"
+      "schedule": "45 20 * * *"
     },
     {
       "path": "/api/discover-multisource",
-      "schedule": "3 13 * * *"
+      "schedule": "48 20 * * *"
     },
     {
       "path": "/api/daily-top5",
-      "schedule": "0 18 * * *"
+      "schedule": "0 21 * * *"
     }
   ]
 }
