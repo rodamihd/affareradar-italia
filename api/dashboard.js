@@ -78,6 +78,12 @@ async function recordOutcomeEvent(input = {}) {
   };
   await redisCommand("LPUSH", "affareradar:outcome:ledger", JSON.stringify(ledger));
   await redisCommand("LTRIM", "affareradar:outcome:ledger", 0, 999);
+  if (increments.conversions > 0) {
+    await redisCommand("INCRBYFLOAT", "affareradar:metrics:tracked_conversion", String(increments.conversions));
+  }
+  if (increments.revenueEUR > 0) {
+    await redisCommand("INCRBYFLOAT", "affareradar:metrics:tracked_revenue_eur", String(increments.revenueEUR));
+  }
   await recordOutcomeRegistryEvent({ ...input, body, dealId:ledger.dealId, occurredAt:ledger.occurredAt });
   return { ok:true, touched, ledger };
 }
@@ -805,7 +811,10 @@ export default async function handler(req, res) {
       "rejected_below_threshold",
       "publish_failed",
       "attribution_click",
+      "tracked_amazon_click",
       "tracked_engagement",
+      "tracked_conversion",
+      "tracked_revenue_eur",
       "rejected_creator_quality",
       "republish_blocked",
       "reward_validation_failed",
