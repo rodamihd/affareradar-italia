@@ -31,7 +31,7 @@ import {
 import crypto from "node:crypto";
 import { startRuntimeObservation, runtimeSuccess, runtimeFailure } from "../lib/runtime-observability.js";
 import { redisConfig, redisCommand } from "../lib/redis-rest.js";
-import { classifyDecisionEvent, recordDecisionEvent } from "../lib/decision-outcome-registry.js";
+import { classifyDecisionEvent, recordDecisionEvent, recordPublicationOutcome } from "../lib/decision-outcome-registry.js";
 
 const memory = globalThis.__affareRadarState || {
   published:new Map(),
@@ -1054,6 +1054,13 @@ export default async function handler(req, res) {
 
   await recordAntiSpam(antiSpamState, category, now);
   await recordOutcomePublish(body, true);
+  await recordPublicationOutcome(body, {
+    dealId,
+    telegramMessageId:publishData.telegram_message_id,
+    success:true,
+    reportSource:"affareradar_publish",
+    occurredAt:nowIso(now)
+  });
 
   const lifecycle = nextLifecycle(lifecycleStore.value, body, now);
   const agentLifecycle = buildOfferLifecycle(
