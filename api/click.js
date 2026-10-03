@@ -71,12 +71,13 @@ export default async function handler(req, res) {
         engagements:["telegram_share","whatsapp_share","channel_invite"].includes(event.action) ? 1 : 0
       });
 
-      if (["telegram_share","whatsapp_share","channel_invite"].includes(event.action)) {
+      if (["amazon_click","telegram_share","whatsapp_share","channel_invite"].includes(event.action)) {
         const outcomeContext = {
           category:data.category || "other",
           source:data.source || "telegram",
           dealType:data.dealType || data.contentType || "deal"
         };
+        const isAmazonClick = event.action === "amazon_click";
         for (const dimension of outcomeDimensions(outcomeContext, Date.now())) {
           const key = `affareradar:outcome:${dimension}`;
           const rr = await redisCommand("GET", key);
@@ -87,11 +88,14 @@ export default async function handler(req, res) {
           if (rr.result) {
             try { stats = { ...stats, ...JSON.parse(rr.result) }; } catch {}
           }
-          stats.engagements = Number(stats.engagements || 0) + 1;
+          if (isAmazonClick) stats.clicks = Number(stats.clicks || 0) + 1;
+          else stats.engagements = Number(stats.engagements || 0) + 1;
           stats.lastUpdatedAt = new Date().toISOString();
           await redisCommand("SET", key, JSON.stringify(stats), "EX", 7776000);
         }
-        await redisCommand("INCR", "affareradar:metrics:tracked_engagement");
+        await redisCommand("INCR", isAmazonClick
+          ? "affareradar:metrics:tracked_amazon_click"
+          : "affareradar:metrics:tracked_engagement");
       }
     }
   } catch {}
