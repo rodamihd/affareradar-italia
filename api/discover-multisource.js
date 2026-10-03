@@ -124,6 +124,27 @@ async function resolveAmazonUrl(raw) {
   }
 }
 
+async function mapWithConcurrency(items, limit, worker) {
+  const size = Math.max(1, Number(limit) || 1);
+  const out = new Array(items.length);
+  let next = 0;
+
+  async function run() {
+    while (true) {
+      const i = next++;
+      if (i >= items.length) return;
+      try {
+        out[i] = await worker(items[i], i);
+      } catch {
+        out[i] = null;
+      }
+    }
+  }
+
+  await Promise.all(Array.from({ length:Math.min(size, items.length) }, () => run()));
+  return out;
+}
+
 function parsePrice(text) {
   const s = String(text || "");
   const matches = [...s.matchAll(/(?:€\s*([0-9]{1,5}(?:[.,][0-9]{1,2})?)|([0-9]{1,5}(?:[.,][0-9]{1,2})?)\s*€)/g)];
@@ -669,13 +690,23 @@ export default async function handler(req, res) {
   const consensusGroups = new Map();
   const resolutionLimit = Math.max(12, Math.min(60, Number(process.env.MULTISOURCE_RESOLUTION_LIMIT || 40)));
 
-  for (const candidate of candidates
+  const resolutionCandidates = candidates
     .sort((a,b) => Number(b.dealScore || 0) - Number(a.dealScore || 0))
-    .slice(0, resolutionLimit)) {
-    const resolvedUrl = await resolveAmazonUrl(candidate.amazonUrl);
-    if (!resolvedUrl) continue;
+    .slice(0, resolutionLimit);
+  const resolutionConcurrency = Math.max(2, Math.min(8, Number(process.env.MULTISOURCE_RESOLUTION_CONCURRENCY || 5)));
+  const resolvedCandidates = await mapWithConcurrency(
+    resolutionCandidates,
+    resolutionConcurrency,
+    async candidate => {
+      const resolvedUrl = await resolveAmazonUrl(candidate.amazonUrl);
+      if (!resolvedUrl) return null;
+      const asin = candidate.asin || extractAsinFromAmazonUrl(resolvedUrl);
+      return { candidate, resolvedUrl, asin:asin || null };
+    }
+  );
 
-    const asin = candidate.asin || extractAsinFromAmazonUrl(resolvedUrl);
+  for (const row of resolvedCandidates.filter(Boolean)) {
+    const { candidate, resolvedUrl, asin } = row;
     const key = asin || resolvedUrl.split("?")[0];
     if (!key) continue;
 
