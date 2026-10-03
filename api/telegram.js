@@ -77,6 +77,17 @@ export default async function handler(req, res) {
   const origin = req.headers.host ? `${protocol}://${req.headers.host}` : "";
   const dealId = asin || String(title).slice(0, 80);
 
+  const trackedAmazonUrl = buildTrackedRedirect(origin, {
+    destination:finalAmazonUrl,
+    channel:"telegram",
+    contentType,
+    action:"amazon_click",
+    dealId,
+    category:category || null,
+    source:body.source || rawBody.source || null,
+    dealType:dealType || contentType
+  });
+
   const shareOfferText = [
     "🔥 Guarda questa offerta trovata da AffareRadar Italia",
     title,
@@ -165,7 +176,7 @@ export default async function handler(req, res) {
   if (caption.length > 1000) caption = caption.slice(0, 997) + "...";
 
   const inlineKeyboard = [
-    [{ text:isReward ? "🎁 Scopri il programma su Amazon" : "🛒 Vedi offerta su Amazon", url:finalAmazonUrl }],
+    [{ text:isReward ? "🎁 Scopri il programma su Amazon" : "🛒 Vedi offerta su Amazon", url:trackedAmazonUrl }],
     [{ text:"📤 Invia l'offerta ad un amico", url:trackedTelegramShareUrl }],
     [{ text:"🟢 Condividi su WhatsApp", url:trackedWhatsappShareUrl }]
   ];
