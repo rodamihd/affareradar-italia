@@ -445,6 +445,32 @@ async function submit(req, deal) {
   return { ok:r.ok, status:r.status, data };
 }
 
+async function submitPreApi(req, deal) {
+  if (String(process.env.AFFARERADAR_PRE_API_MODE || "").trim() !== "1") {
+    return { attempted:false, ok:true, status:0, data:{ published:false, reason:"preapi_mode_disabled" } };
+  }
+  const host = req.headers.host;
+  const secret = process.env.PUBLISH_SECRET;
+  if (!host || !secret) {
+    return { attempted:true, ok:false, status:0, data:{ published:false, reason:"host_or_secret_missing" } };
+  }
+  const protocol = String(req.headers["x-forwarded-proto"] || "https").split(",")[0].trim();
+  try {
+    const r = await fetch(`${protocol}://${host}/api/preapi-publish`, {
+      method:"POST",
+      headers:{
+        "Content-Type":"application/json",
+        "x-affareradar-secret":secret
+      },
+      body:JSON.stringify(deal)
+    });
+    const data = await r.json().catch(() => ({}));
+    return { attempted:true, ok:r.ok, status:r.status, data };
+  } catch (error) {
+    return { attempted:true, ok:false, status:0, data:{ published:false, reason:String(error?.message || error) } };
+  }
+}
+
 export default async function handler(req, res) {
   const __obs = startRuntimeObservation(req, "/api/discover-multisource");
   if (req.method !== "GET" && req.method !== "POST") {
@@ -550,7 +576,12 @@ export default async function handler(req, res) {
         verificationQueue
       }
     };
-    await updateSourceStats(deal, publish);
+    const preApi = await submitPreApi(req, deal);
+    await updateSourceStats(deal, preApi?.data?.published === true ? {
+      ok:true,
+      status:200,
+      data:{ ...preApi.data, decision:"preapi_published" }
+    } : publish);
     results.push({
       title:deal.title,
       dealScore:deal.dealScore,
@@ -561,7 +592,8 @@ export default async function handler(req, res) {
         asinCandidate:deal.signalClaims.asinCandidate
       } : null,
       dag:dag ? { dagId:dag.dagId, status:dag.status } : null,
-      publish
+      publish,
+      preApi
     });
   }
 
