@@ -1,3 +1,5 @@
+import { executeExternalOperation } from "../lib/agentos-external-runtime.js";
+
 function redisConfig() {
   const url = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
@@ -73,6 +75,11 @@ export default async function handler(req, res) {
 
   if (!authorized(req)) {
     return res.status(401).json({ ok:false, error:"unauthorized" });
+  }
+
+  if (req.body?.action === "agentos.external") {
+    const result = executeExternalOperation(req.body?.request || {});
+    return res.status(result.status || 200).json(result);
   }
 
   if (!redisConfig()) {
