@@ -1,6 +1,34 @@
 import { runAgentOsSelfTest } from "../lib/agentos-selftest.js";
+import { externalDescriptor, executeExternalOperation } from "../lib/agentos-external-runtime.js";
+
+function externalAuthorized(req) {
+  const secret = process.env.AGENTOS_EXTERNAL_SECRET || process.env.PUBLISH_SECRET;
+  if (!secret) return false;
+  return req.headers["x-agentos-secret"] === secret ||
+    req.headers["x-affareradar-secret"] === secret;
+}
 
 export default async function handler(req, res) {
+  const externalMode = req.query?.agentos === "external";
+
+  if (externalMode) {
+    if (!externalAuthorized(req)) {
+      return res.status(401).json({ ok:false, error:"unauthorized" });
+    }
+    if (req.method === "GET") {
+      return res.status(200).json(externalDescriptor());
+    }
+    if (req.method === "POST") {
+      const result = executeExternalOperation(req.body || {});
+      return res.status(result.status || 200).json(result);
+    }
+    return res.status(405).json({ ok:false, error:"method_not_allowed" });
+  }
+
+  if (req.method !== "GET") {
+    return res.status(405).json({ ok:false, error:"method_not_allowed" });
+  }
+
   const token = process.env.TELEGRAM_BOT_TOKEN;
   const channelTarget = process.env.TELEGRAM_CHANNEL_ID || process.env.TELEGRAM_CHANNEL_USERNAME;
   const fallbackChatId = process.env.TELEGRAM_CHAT_ID;
