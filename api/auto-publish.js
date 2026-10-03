@@ -11,6 +11,11 @@ import { evaluatePolicies } from "../lib/policy-engine.js";
 import { computeSourceReputation, initialSourceReputation, sourceReputationKeys } from "../lib/source-reputation.js";
 import { learnedOutcomeProfile, mergeLearnedSignals, outcomeDimensions, mergeOutcomeStats } from "../lib/outcome-learning.js";
 import { expectedRevenue } from "../lib/expected-revenue-engine.js";
+import { predictOfferOutcome } from "../lib/prediction-layer.js";
+import { evaluateStockPricePersistence } from "../lib/stock-price-persistence.js";
+import { revenueAttributionProfile } from "../lib/revenue-attribution-learning.js";
+import { optimizePublishingTime } from "../lib/publishing-time-optimizer.js";
+import { adaptiveControl33_10 } from "../lib/agentos-33_10-adaptive-control.js";
 import { verificationPlan } from "../lib/verification-orchestrator.js";
 import { systemMode } from "../lib/safe-mode-controller.js";
 import { agentOsEvent, agentOsRoutingDecision, universalEntityId } from "../lib/agentos-adapter.js";
@@ -709,8 +714,22 @@ export default async function handler(req, res) {
     revenue,
     outcomeProfile
   }, now);
+  const prediction = predictOfferOutcome(body, {
+    verification,
+    sourceReputation,
+    opportunity,
+    outcomeProfile
+  }, now);
   const verifyPlan = verificationPlan(body, verification);
   const freshness = freshnessSla(body, verification, now);
+  const persistence = evaluateStockPricePersistence(body, { verification, freshness }, now);
+  const revenueAttribution = revenueAttributionProfile(body, { outcomeProfile, revenue });
+  const timing = optimizePublishingTime(body, {
+    persistence,
+    prediction,
+    opportunity,
+    outcomeProfile
+  }, now);
   const knowledge = knowledgeProposal(body, { verification, freshness, sourceReputation });
   const manifest = releaseManifest({ intent:intent.intent });
   const knowledgeStore = await persistKnowledgeProposal(body, knowledge, { verification, freshness, sourceReputation, manifest });
@@ -724,7 +743,50 @@ export default async function handler(req, res) {
     verification
   });
 
+  const adaptiveControl = adaptiveControl33_10({
+    mode,
+    policy,
+    egress,
+    verification,
+    commercial:Boolean(body.price || body.oldPrice || body.effectivePrice || body.discount || body.coupon || body.stack),
+    prediction,
+    persistence,
+    timing,
+    revenueAttribution
+  });
   const routing = agentOsRoutingDecision({ mode, policy, verification, opportunity });
+
+  if (adaptiveControl.action === "BLOCK") {
+    await trackMetric("agentos_33_10_adaptive_block", body, { adaptiveControl, prediction, persistence, timing, revenueAttribution });
+    return res.status(200).json({
+      ok:true,
+      published:false,
+      decision:"blocked",
+      reason:"agentos_33_10_adaptive_control",
+      lifecycle:lifecycleStore.value?.status || "DISCOVERED",
+      adaptiveControl,
+      prediction,
+      persistence,
+      timing,
+      revenueAttribution
+    });
+  }
+
+  if (adaptiveControl.action === "HOLD" || adaptiveControl.action === "DEFER" || adaptiveControl.action === "REVERIFY") {
+    await trackMetric("agentos_33_10_adaptive_hold", body, { adaptiveControl, prediction, persistence, timing, revenueAttribution });
+    return res.status(200).json({
+      ok:true,
+      published:false,
+      decision:adaptiveControl.action.toLowerCase(),
+      reason:adaptiveControl.reason,
+      lifecycle:lifecycleStore.value?.status || "VERIFIED",
+      adaptiveControl,
+      prediction,
+      persistence,
+      timing,
+      revenueAttribution
+    });
+  }
 
   if (!egress.passed) {
     await recordAgentOsEvent("AFFARERADAR_EGRESS_BLOCKED", body, {
@@ -752,7 +814,12 @@ export default async function handler(req, res) {
       knowledge,
       knowledgeStore,
       semanticCache,
-      releaseManifest:manifest
+      releaseManifest:manifest,
+    prediction,
+    persistence,
+    revenueAttribution,
+    timing,
+    adaptiveControl
     });
   }
   if (!mode.publishingAllowed) {
@@ -1066,7 +1133,12 @@ export default async function handler(req, res) {
     knowledge,
     knowledgeStore,
     semanticCache,
-    releaseManifest:manifest
+    releaseManifest:manifest,
+    prediction,
+    persistence,
+    revenueAttribution,
+    timing,
+    adaptiveControl
   });
 
   try {
@@ -1095,6 +1167,11 @@ export default async function handler(req, res) {
         knowledgeStore,
         semanticCache,
         releaseManifest:manifest,
+    prediction,
+    persistence,
+    revenueAttribution,
+    timing,
+    adaptiveControl,
         telegramMessageId:publishData.telegram_message_id
       });
       await redisCommand("SET", `affareradar:evidence:${evidence.evidenceId}`, JSON.stringify(evidence), "EX", 7776000);
@@ -1147,6 +1224,11 @@ export default async function handler(req, res) {
     freshness,
     egress,
     knowledge,
-    releaseManifest:manifest
+    releaseManifest:manifest,
+    prediction,
+    persistence,
+    revenueAttribution,
+    timing,
+    adaptiveControl
   });
 }
