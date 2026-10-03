@@ -14,6 +14,7 @@ import { expectedRevenue } from "../lib/expected-revenue-engine.js";
 import { predictOfferOutcome } from "../lib/prediction-layer.js";
 import { evaluateStockPricePersistence } from "../lib/stock-price-persistence.js";
 import { revenueAttributionProfile } from "../lib/revenue-attribution-learning.js";
+import { profitLearningDecision } from "../lib/profit-learning-controller.js";
 import { optimizePublishingTime } from "../lib/publishing-time-optimizer.js";
 import { adaptiveControl33_10 } from "../lib/agentos-33_10-adaptive-control.js";
 import { verificationPlan } from "../lib/verification-orchestrator.js";
@@ -728,6 +729,7 @@ export default async function handler(req, res) {
   const freshness = freshnessSla(body, verification, now);
   const persistence = evaluateStockPricePersistence(body, { verification, freshness }, now);
   const revenueAttribution = revenueAttributionProfile(body, { outcomeProfile, revenue });
+  const profitLearning = profitLearningDecision(outcomeProfile, revenueAttribution);
   const timing = optimizePublishingTime(body, {
     persistence,
     prediction,
@@ -761,7 +763,7 @@ export default async function handler(req, res) {
   const routing = agentOsRoutingDecision({ mode, policy, verification, opportunity });
 
   if (adaptiveControl.action === "BLOCK") {
-    await trackMetric("agentos_33_10_adaptive_block", body, { adaptiveControl, prediction, persistence, timing, revenueAttribution });
+    await trackMetric("agentos_33_10_adaptive_block", body, { adaptiveControl, prediction, persistence, timing, revenueAttribution, profitLearning });
     return res.status(200).json({
       ok:true,
       published:false,
@@ -777,7 +779,7 @@ export default async function handler(req, res) {
   }
 
   if (adaptiveControl.action === "HOLD" || adaptiveControl.action === "DEFER" || adaptiveControl.action === "REVERIFY") {
-    await trackMetric("agentos_33_10_adaptive_hold", body, { adaptiveControl, prediction, persistence, timing, revenueAttribution });
+    await trackMetric("agentos_33_10_adaptive_hold", body, { adaptiveControl, prediction, persistence, timing, revenueAttribution, profitLearning });
     return res.status(200).json({
       ok:true,
       published:false,
@@ -822,6 +824,7 @@ export default async function handler(req, res) {
     prediction,
     persistence,
     revenueAttribution,
+    profitLearning,
     timing,
     adaptiveControl
     });
