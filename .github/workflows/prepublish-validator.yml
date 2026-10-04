@@ -1,0 +1,31 @@
+name: AgentOS 33.10 Pre-Publish Validator
+
+on:
+  pull_request:
+    paths:
+      - "api/auto-publish.js"
+      - "lib/pre-publish-validator.js"
+      - "lib/pre-publish-validator-selftest.js"
+      - ".github/workflows/prepublish-validator.yml"
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Syntax check
+        run: |
+          node --check lib/pre-publish-validator.js
+          node --check lib/pre-publish-validator-selftest.js
+          node --check api/auto-publish.js
+
+      - name: Run validator self-test
+        run: node lib/pre-publish-validator-selftest.js
