@@ -28,3 +28,5 @@ jobs:
         run: node test-cross-vertical-shadow-report.mjs
       - name: Run evidence ingestion and validation dashboard tests
         run: node test-shadow-evidence-dashboard.mjs
+      - name: Run real outcome joiner tests
+        run: node test-affareradar-real-outcome-joiner.mjs
