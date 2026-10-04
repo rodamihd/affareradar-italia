@@ -222,18 +222,50 @@ function itemFromText(text, source, imageUrl = null, publishedAt = null) {
 
 function parseTelegram(html, source) {
   const out = [];
-  const re = /<div class="tgme_widget_message[^>]*>([\s\S]*?)<\/div>\s*<\/div>\s*<\/div>/gi;
-  let m;
-  while ((m = re.exec(html)) && out.length < 30) {
-    const block = m[1];
-    const textMatch = block.match(/<div class="tgme_widget_message_text[^>]*>([\s\S]*?)<\/div>/i);
+  const raw = String(html || "");
+  const chunks = raw.split(/<div class="tgme_widget_message_wrap\b[^>]*>/i).slice(1);
+
+  for (const chunk of chunks) {
+    if (out.length >= 30) break;
+
+    const nextWrap = chunk.search(/<div class="tgme_widget_message_wrap\b[^>]*>/i);
+    const block = nextWrap >= 0 ? chunk.slice(0, nextWrap) : chunk;
+
+    const textMatch =
+      block.match(/<div class="tgme_widget_message_text\b[^>]*>([\s\S]*?)<\/div>/i) ||
+      block.match(/<div class="tgme_widget_message_caption\b[^>]*>([\s\S]*?)<\/div>/i);
+
     if (!textMatch) continue;
+
     const text = textMatch[1];
-    const image = block.match(/background-image:url\('([^']+)'\)/i)?.[1] || null;
-    const datetime = block.match(/datetime="([^"]+)"/i)?.[1] || null;
+    const image =
+      block.match(/background-image\s*:\s*url\(['"]?([^'")]+)['"]?\)/i)?.[1] ||
+      block.match(/<img[^>]+src=["']([^"']+)["']/i)?.[1] ||
+      null;
+    const datetime = block.match(/datetime=["']([^"']+)["']/i)?.[1] || null;
+
     const item = itemFromText(text, source, image, datetime);
     if (item) out.push(item);
   }
+
+  if (!out.length) {
+    const messageBlocks = raw.match(/<div class="tgme_widget_message\b[\s\S]*?(?=<div class="tgme_widget_message_wrap\b|$)/gi) || [];
+    for (const block of messageBlocks) {
+      if (out.length >= 30) break;
+      const textMatch =
+        block.match(/<div class="tgme_widget_message_text\b[^>]*>([\s\S]*?)<\/div>/i) ||
+        block.match(/<div class="tgme_widget_message_caption\b[^>]*>([\s\S]*?)<\/div>/i);
+      if (!textMatch) continue;
+      const image =
+        block.match(/background-image\s*:\s*url\(['"]?([^'")]+)['"]?\)/i)?.[1] ||
+        block.match(/<img[^>]+src=["']([^"']+)["']/i)?.[1] ||
+        null;
+      const datetime = block.match(/datetime=["']([^"']+)["']/i)?.[1] || null;
+      const item = itemFromText(textMatch[1], source, image, datetime);
+      if (item) out.push(item);
+    }
+  }
+
   return out;
 }
 
