@@ -35,6 +35,7 @@ import { redisConfig, redisCommand } from "../lib/redis-rest.js";
 import { classifyDecisionEvent, recordDecisionEvent, recordPublicationOutcome } from "../lib/decision-outcome-registry.js";
 import { enqueueQuantoItaliaDistribution } from "../lib/distribution-engine.js";
 import { normalizeOpportunity } from "../lib/universal-opportunity.js";
+import { evaluateOpportunityEconomics } from "../lib/convenience-engine.js";
 
 const memory = globalThis.__affareRadarState || {
   published:new Map(),
@@ -1091,6 +1092,7 @@ export default async function handler(req, res) {
   });
   const distribution = channelPlan(body);
   const universalOpportunity = normalizeOpportunity(body, { dealId, channel:"telegram", contentType:distribution.contentType });
+  const opportunityEconomics = evaluateOpportunityEconomics(universalOpportunity);
   const quantoItaliaDistribution = await enqueueQuantoItaliaDistribution({ ...body, opportunity:universalOpportunity }, distribution, { dealId });
   const storefrontDecision = isReward
     ? {
@@ -1126,6 +1128,7 @@ export default async function handler(req, res) {
     lifecycleStatus:lifecycle.status,
     distribution,
     universalOpportunity,
+    opportunityEconomics,
     quantoItaliaDistribution,
     storefrontDecision,
     creatorQuality,
@@ -1221,6 +1224,7 @@ export default async function handler(req, res) {
     thresholds:{ minDealScore, minReliability },
     distribution,
     universalOpportunity,
+    opportunityEconomics,
     quantoItaliaDistribution,
     storefront:{ decision:storefrontDecision, content:storefront },
     creatorQuality,
