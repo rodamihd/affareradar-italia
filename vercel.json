@@ -8,23 +8,19 @@
   "crons": [
     {
       "path": "/api/discover-multisource",
-      "schedule": "30 7 * * *"
+      "schedule": "0 7 * * *"
     },
     {
       "path": "/api/discover-multisource",
-      "schedule": "30 12 * * *"
+      "schedule": "0 12 * * *"
     },
     {
       "path": "/api/discover-multisource",
-      "schedule": "30 18 * * *"
+      "schedule": "0 18 * * *"
     },
     {
       "path": "/api/daily-top5",
       "schedule": "0 21 * * *"
-    },
-    {
-      "path": "/api/discover-multisource",
-      "schedule": "22 19 * * *"
     }
   ]
 }
