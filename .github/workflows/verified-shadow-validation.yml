@@ -30,3 +30,7 @@ jobs:
         run: node test-shadow-evidence-dashboard.mjs
       - name: Run real outcome joiner tests
         run: node test-affareradar-real-outcome-joiner.mjs
+      - name: Run verified shadow live-path telemetry tests
+        run: |
+          node test-affareradar-verified-shadow-telemetry.mjs
+          node --check api/auto-publish.js
