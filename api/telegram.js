@@ -3,6 +3,15 @@ import { sanitizeForAmazonPublication } from "../lib/amazon-compliance.js";
 import { buildTrackedRedirect } from "../lib/attribution.js";
 import { evaluateAmazonReward } from "../lib/rewards-engine.js";
 
+function currentCampaignSlot() {
+  const offset = Number(process.env.AFFARERADAR_LOCAL_UTC_OFFSET_HOURS || 2);
+  const hour = (new Date().getUTCHours() + offset + 24) % 24;
+  if (hour >= 6 && hour < 12) return "morning";
+  if (hour >= 12 && hour < 18) return "afternoon";
+  if (hour >= 18 && hour < 24) return "evening";
+  return "off_window";
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ ok:false, error:"method_not_allowed" });
@@ -62,7 +71,8 @@ export default async function handler(req, res) {
     (coupon || stack) ? "coupon_stack" :
     (Number.isFinite(scoreNum) && scoreNum >= 90 ? "top_deal" : "deal");
 
-  const affiliateValidation = validateAffiliateLink(amazonUrl, "telegram", contentType);
+  const campaign = rawBody.publicationSlot || body.publicationSlot || currentCampaignSlot();
+  const affiliateValidation = validateAffiliateLink(amazonUrl, "telegram", contentType, campaign);
   if (!affiliateValidation.valid) {
     return res.status(400).json({
       ok:false,
@@ -72,7 +82,7 @@ export default async function handler(req, res) {
   }
 
   const finalAmazonUrl = affiliateValidation.trackedUrl;
-  const attribution = attributionMeta("telegram", contentType);
+  const attribution = attributionMeta("telegram", contentType, campaign);
   const protocol = String(req.headers["x-forwarded-proto"] || "https").split(",")[0].trim();
   const origin = req.headers.host ? `${protocol}://${req.headers.host}` : "";
   const dealId = asin || String(title).slice(0, 80);
