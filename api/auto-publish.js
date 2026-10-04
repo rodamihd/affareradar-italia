@@ -33,7 +33,7 @@ import crypto from "node:crypto";
 import { startRuntimeObservation, runtimeSuccess, runtimeFailure } from "../lib/runtime-observability.js";
 import { redisConfig, redisCommand } from "../lib/redis-rest.js";
 import { classifyDecisionEvent, recordDecisionEvent, recordPublicationOutcome } from "../lib/decision-outcome-registry.js";
-import { evaluateVerifiedBackportShadow } from "../lib/agentos-33_10-verified-shadow.js";
+import { buildAffareRadarVerifiedShadowTelemetry } from "../lib/affareradar-verified-shadow-telemetry.js";
 
 const memory = globalThis.__affareRadarState || {
   published:new Map(),
@@ -100,30 +100,12 @@ async function trackMetric(event, body, extra = {}) {
       if (classifyDecisionEvent(event, extra) !== "OTHER") {
         const recorded = await recordDecisionEvent(event, body, { ...extra, dealId:payload.dealId });
         if (recorded?.record?.decisionId) {
-          const action = recorded.record.action;
-          const productionDecision =
-            action === "PUBLISHED" ? "PUBLISH" :
-            ["BLOCK","REJECT"].includes(action) ? "BLOCK" :
-            "REVIEW";
-
-          const shadow = evaluateVerifiedBackportShadow({
-            eventId:recorded.record.decisionId,
-            productionDecision,
-            verification:extra.verification || null,
-            policy:extra.policy || null,
-            egress:extra.egress || null,
-            runtimeIntegrity:extra.runtimeIntegrity || null,
-            workloadIdentity:extra.workloadIdentity || null,
-            evidence:{
-              dealId:payload.dealId,
-              event,
-              action,
-              reason:recorded.record.reason || null,
-              opportunityScore:recorded.record.opportunityScore,
-              predictionScore:recorded.record.predictionScore,
-              sourceReputation:recorded.record.sourceReputation
-            }
-          });
+          const shadow = buildAffareRadarVerifiedShadowTelemetry(
+            recorded.record,
+            event,
+            payload,
+            extra
+          );
 
           await redisCommand("LPUSH", "affareradar:agentos:verified-shadow", JSON.stringify(shadow));
           await redisCommand("LTRIM", "affareradar:agentos:verified-shadow", 0, 999);
