@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import { runAgentOsSelfTest } from "../lib/agentos-selftest.js";
 import { externalDescriptor, executeExternalOperation } from "../lib/agentos-external-runtime.js";
 
@@ -8,7 +9,82 @@ function externalAuthorized(req) {
     req.headers["x-affareradar-secret"] === secret;
 }
 
+function b64urlJson(segment) {
+  const normalized = String(segment || "").replace(/-/g, "+").replace(/_/g, "/");
+  const padded = normalized + "=".repeat((4 - (normalized.length % 4)) % 4);
+  return JSON.parse(Buffer.from(padded, "base64").toString("utf8"));
+}
+
+async function githubOidcAuthorized(req) {
+  try {
+    const auth = String(req.headers.authorization || "");
+    if (!auth.startsWith("Bearer ")) return false;
+    const token = auth.slice(7).trim();
+    const parts = token.split(".");
+    if (parts.length !== 3) return false;
+
+    const header = b64urlJson(parts[0]);
+    const payload = b64urlJson(parts[1]);
+    if (header.alg !== "RS256" || !header.kid) return false;
+
+    const now = Math.floor(Date.now() / 1000);
+    if (payload.iss !== "https://token.actions.githubusercontent.com") return false;
+    if (payload.aud !== "affareradar-vercel-cron") return false;
+    if (payload.repository !== "rodamihd/affareradar-italia") return false;
+    if (payload.ref !== "refs/heads/main") return false;
+    if (!payload.exp || payload.exp < now || (payload.nbf && payload.nbf > now + 30)) return false;
+
+    const configRes = await fetch("https://token.actions.githubusercontent.com/.well-known/openid-configuration");
+    if (!configRes.ok) return false;
+    const config = await configRes.json();
+
+    const jwksRes = await fetch(config.jwks_uri);
+    if (!jwksRes.ok) return false;
+    const jwks = await jwksRes.json();
+    const jwk = Array.isArray(jwks.keys) ? jwks.keys.find(k => k.kid === header.kid) : null;
+    if (!jwk) return false;
+
+    const key = crypto.createPublicKey({ key:jwk, format:"jwk" });
+    const signature = Buffer.from(parts[2].replace(/-/g, "+").replace(/_/g, "/"), "base64");
+    const signed = Buffer.from(parts[0] + "." + parts[1], "utf8");
+    return crypto.verify("RSA-SHA256", signed, key, signature);
+  } catch {
+    return false;
+  }
+}
+
+async function runGithubCron(req, res) {
+  if (req.method !== "POST") {
+    return res.status(405).json({ ok:false, error:"method_not_allowed" });
+  }
+  if (!(await githubOidcAuthorized(req))) {
+    return res.status(401).json({ ok:false, error:"github_oidc_unauthorized" });
+  }
+
+  const host = req.headers.host;
+  const publishSecret = process.env.PUBLISH_SECRET;
+  if (!host || !publishSecret) {
+    return res.status(503).json({ ok:false, error:"cron_bridge_not_configured" });
+  }
+
+  const protocol = String(req.headers["x-forwarded-proto"] || "https").split(",")[0].trim();
+  const upstream = await fetch(`${protocol}://${host}/api/discover-multisource`, {
+    method:"POST",
+    headers:{
+      "Content-Type":"application/json",
+      "x-affareradar-secret":publishSecret
+    },
+    body:JSON.stringify({ trigger:"github_oidc_cron" })
+  });
+  const data = await upstream.json().catch(() => ({}));
+  return res.status(upstream.status).json({ ok:upstream.ok, trigger:"github_oidc_cron", discovery:data });
+}
+
 export default async function handler(req, res) {
+  if (req.query?.githubCron === "discover") {
+    return runGithubCron(req, res);
+  }
+
   const externalMode = req.query?.agentos === "external";
 
   if (externalMode) {
