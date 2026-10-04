@@ -2,6 +2,7 @@ import { verifyTrackedPayload } from "../lib/attribution.js";
 import { redisConfig, redisCommand } from "../lib/redis-rest.js";
 import { outcomeDimensions } from "../lib/outcome-learning.js";
 import { recordOutcomeRegistryEvent } from "../lib/decision-outcome-registry.js";
+import { normalizeServiceTrackingEvent } from "../lib/service-tracking.js";
 
 function safeDestination(value) {
   try {
@@ -23,6 +24,38 @@ function safeDestination(value) {
 }
 
 export default async function handler(req, res) {
+  if (req.method === "POST") {
+    const event = normalizeServiceTrackingEvent(req.body || {});
+    if (!event.valid) {
+      return res.status(400).json({ ok:false, error:event.reason, eventType:event.eventType });
+    }
+
+    try {
+      if (redisConfig()) {
+        const eventKey = event.eventId || `${event.eventType.toLowerCase()}:${event.opportunityId || "unknown"}:${Date.now()}`;
+        await Promise.all([
+          redisCommand("LPUSH", "affareradar:service:events", JSON.stringify(event)),
+          redisCommand("SET", `affareradar:service:event:${eventKey}`, JSON.stringify(event), "EX", 7776000),
+          redisCommand("INCR", `affareradar:metrics:service_${event.eventType.toLowerCase()}`)
+        ]);
+        await redisCommand("LTRIM", "affareradar:service:events", 0, 999);
+
+        if (event.eventType === "COMMISSION" && event.verifiedRevenue === true) {
+          await redisCommand("INCRBYFLOAT", "affareradar:metrics:service_verified_revenue_eur", event.revenueEUR || 0);
+        }
+      }
+    } catch (error) {
+      return res.status(503).json({ ok:false, error:"tracking_persistence_failed" });
+    }
+
+    return res.status(200).json({
+      ok:true,
+      mode:"PERSISTED",
+      event,
+      countedAsVerifiedRevenue:event.eventType === "COMMISSION" ? event.verifiedRevenue === true : null
+    });
+  }
+
   if (req.method !== "GET") {
     return res.status(405).json({ ok:false, error:"method_not_allowed" });
   }
