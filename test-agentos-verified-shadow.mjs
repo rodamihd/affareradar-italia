@@ -17,6 +17,22 @@ const good = evaluateVerifiedBackportShadow({
 assert.equal(good.backport_decision, "PUBLISH");
 assert.equal(good.enforcement, false);
 assert.equal(good.evidence_hash_version, "2");
+assert.equal(good.evidence_contract, "agentos.verified_evidence.v1");
+assert.equal(good.evidence_hash_algorithm, "sha256");
+assert.equal(good.evidence_canonicalization, "agentos-json-c14n-v1");
+assert.equal(good.vertical, "affareradar");
+assert.equal(good.decision_id, "deal-1");
+assert.equal(good.event_id, "deal-1");
+assert.equal(good.outcome_id, null);
+assert.equal(good.source, "affareradar-agentos-33.10-shadow");
+assert.equal(good.mode, "shadow");
+
+const linkedOutcome = evaluateVerifiedBackportShadow({
+  ...baseInput,
+  eventId:"deal-outcome",
+  outcomeId:"outcome-42"
+});
+assert.equal(linkedOutcome.outcome_id, "outcome-42");
 
 const missingGrant = evaluateVerifiedBackportShadow({
   ...baseInput,
