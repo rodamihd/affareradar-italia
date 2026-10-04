@@ -13,6 +13,31 @@ function currentCampaignSlot() {
 }
 
 export default async function handler(req, res) {
+  if (req.method === "GET" && process.env.AFFARERADAR_TEST_MESSAGE_ENABLED === "true" && String(req.query?.systemTest || "") === "1") {
+    const token = process.env.TELEGRAM_BOT_TOKEN;
+    const channelId = process.env.TELEGRAM_CHANNEL_ID || process.env.TELEGRAM_CHANNEL_USERNAME || process.env.TELEGRAM_CHAT_ID;
+    if (!token || !channelId) {
+      return res.status(500).json({ ok:false, error:"telegram_env_missing" });
+    }
+
+    const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method:"POST",
+      headers:{ "Content-Type":"application/json" },
+      body:JSON.stringify({
+        chat_id:channelId,
+        text:"✅ TEST SISTEMA AFFARERADAR\n\nScheduler, Vercel, Redis e Telegram risultano collegati correttamente.",
+        disable_web_page_preview:true
+      })
+    });
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.ok) {
+      return res.status(502).json({ ok:false, error:"telegram_test_failed" });
+    }
+
+    return res.status(200).json({ ok:true, systemTest:true, message_id:data.result?.message_id || null });
+  }
+
   if (req.method !== "POST") {
     return res.status(405).json({ ok:false, error:"method_not_allowed" });
   }
