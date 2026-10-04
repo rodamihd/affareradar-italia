@@ -24,3 +24,5 @@ jobs:
         run: node test-verified-shadow-outcomes.mjs
       - name: Run promotion readiness gate tests
         run: node test-promotion-readiness.mjs
+      - name: Run cross-vertical evidence collector tests
+        run: node test-cross-vertical-shadow-report.mjs
