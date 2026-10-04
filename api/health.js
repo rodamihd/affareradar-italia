@@ -53,6 +53,54 @@ async function githubOidcAuthorized(req) {
   }
 }
 
+function renderCronAuthorized(req) {
+  try {
+    const ts = String(req.headers["x-affareradar-ts"] || "");
+    const signatureB64 = String(req.headers["x-affareradar-signature"] || "");
+    const epoch = Number(ts);
+    if (!Number.isFinite(epoch) || Math.abs(Date.now() - epoch) > 5 * 60 * 1000) return false;
+    if (!signatureB64) return false;
+
+    const publicKey = crypto.createPublicKey({
+      key:Buffer.from("MCowBQYDK2VwAyEAcmAfJdUfO9YJSDPcUmaWegK8o82LzKBnBsf5XAV/qb4=", "base64"),
+      format:"der",
+      type:"spki"
+    });
+    const message = Buffer.from(`${ts}.POST./api/health?renderCron=discover`, "utf8");
+    const signature = Buffer.from(signatureB64, "base64");
+    return crypto.verify(null, message, publicKey, signature);
+  } catch {
+    return false;
+  }
+}
+
+async function runRenderCron(req, res) {
+  if (req.method !== "POST") {
+    return res.status(405).json({ ok:false, error:"method_not_allowed" });
+  }
+  if (!renderCronAuthorized(req)) {
+    return res.status(401).json({ ok:false, error:"render_cron_unauthorized" });
+  }
+
+  const host = req.headers.host;
+  const publishSecret = process.env.PUBLISH_SECRET;
+  if (!host || !publishSecret) {
+    return res.status(503).json({ ok:false, error:"render_cron_bridge_not_configured" });
+  }
+
+  const protocol = String(req.headers["x-forwarded-proto"] || "https").split(",")[0].trim();
+  const upstream = await fetch(`${protocol}://${host}/api/discover-multisource`, {
+    method:"POST",
+    headers:{
+      "Content-Type":"application/json",
+      "x-affareradar-secret":publishSecret
+    },
+    body:JSON.stringify({ trigger:"render_signed_cron" })
+  });
+  const data = await upstream.json().catch(() => ({}));
+  return res.status(upstream.status).json({ ok:upstream.ok, trigger:"render_signed_cron", discovery:data });
+}
+
 async function runGithubCron(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ ok:false, error:"method_not_allowed" });
@@ -81,6 +129,10 @@ async function runGithubCron(req, res) {
 }
 
 export default async function handler(req, res) {
+  if (req.query?.renderCron === "discover") {
+    return runRenderCron(req, res);
+  }
+
   if (req.query?.githubCron === "discover") {
     return runGithubCron(req, res);
   }
