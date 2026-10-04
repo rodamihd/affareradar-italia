@@ -705,6 +705,7 @@ async function submitPreApi(req, deal) {
 }
 
 export default async function handler(req, res) {
+  console.log("[AffareRadar][discover] start", JSON.stringify({ method:req.method, schedule:req.headers["x-vercel-cron-schedule"] || null, at:new Date().toISOString() }));
   const __obs = startRuntimeObservation(req, "/api/discover-multisource");
   if (req.method !== "GET" && req.method !== "POST") {
     return res.status(405).json({ ok:false, error:"method_not_allowed" });
@@ -745,6 +746,8 @@ export default async function handler(req, res) {
       sourceResults.push({ url, ok:false, error:String(error?.message || error) });
     }
   }
+
+  console.log("[AffareRadar][discover] sources", JSON.stringify({ sourceResults, rawCandidates:candidates.length }));
 
   const consensusGroups = new Map();
   const resolutionLimit = Math.max(12, Math.min(60, Number(process.env.MULTISOURCE_RESOLUTION_LIMIT || 40)));
@@ -930,6 +933,7 @@ export default async function handler(req, res) {
     }
   } catch {}
 
+  console.log("[AffareRadar][discover] completed", JSON.stringify({ sources:sources.length, rawCandidates:candidates.length, submitted:results.length }));
   runtimeSuccess(__obs, {
     sources:sources.length,
     rawCandidates:candidates.length,
