@@ -33,6 +33,7 @@ import crypto from "node:crypto";
 import { startRuntimeObservation, runtimeSuccess, runtimeFailure } from "../lib/runtime-observability.js";
 import { redisConfig, redisCommand } from "../lib/redis-rest.js";
 import { classifyDecisionEvent, recordDecisionEvent, recordPublicationOutcome } from "../lib/decision-outcome-registry.js";
+import { enqueueQuantoItaliaDistribution } from "../lib/distribution-engine.js";
 
 const memory = globalThis.__affareRadarState || {
   published:new Map(),
@@ -1088,6 +1089,7 @@ export default async function handler(req, res) {
     }
   });
   const distribution = channelPlan(body);
+  const quantoItaliaDistribution = await enqueueQuantoItaliaDistribution(body, distribution, { dealId });
   const storefrontDecision = isReward
     ? {
         candidate:reward.storefrontSupported,
@@ -1121,6 +1123,7 @@ export default async function handler(req, res) {
     telegramMessageId:publishData.telegram_message_id,
     lifecycleStatus:lifecycle.status,
     distribution,
+    quantoItaliaDistribution,
     storefrontDecision,
     creatorQuality,
     publishingWindow:window,
@@ -1214,6 +1217,7 @@ export default async function handler(req, res) {
     },
     thresholds:{ minDealScore, minReliability },
     distribution,
+    quantoItaliaDistribution,
     storefront:{ decision:storefrontDecision, content:storefront },
     creatorQuality,
     publishingWindow:window,
