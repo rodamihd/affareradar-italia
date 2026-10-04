@@ -8,7 +8,15 @@
   "crons": [
     {
       "path": "/api/discover-multisource",
-      "schedule": "0 7 * * *"
+      "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/discover-multisource",
+      "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/discover-multisource",
+      "schedule": "0 10 * * *"
     },
     {
       "path": "/api/discover-multisource",
@@ -16,7 +24,23 @@
     },
     {
       "path": "/api/discover-multisource",
+      "schedule": "0 14 * * *"
+    },
+    {
+      "path": "/api/discover-multisource",
+      "schedule": "0 16 * * *"
+    },
+    {
+      "path": "/api/discover-multisource",
       "schedule": "0 18 * * *"
+    },
+    {
+      "path": "/api/discover-multisource",
+      "schedule": "0 19 * * *"
+    },
+    {
+      "path": "/api/discover-multisource",
+      "schedule": "0 20 * * *"
     },
     {
       "path": "/api/daily-top5",
