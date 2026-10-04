@@ -26,3 +26,5 @@ jobs:
         run: node test-promotion-readiness.mjs
       - name: Run cross-vertical evidence collector tests
         run: node test-cross-vertical-shadow-report.mjs
+      - name: Run evidence ingestion and validation dashboard tests
+        run: node test-shadow-evidence-dashboard.mjs
