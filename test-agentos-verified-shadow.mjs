@@ -96,4 +96,92 @@ assert.notEqual(
   "Array order is semantic and must affect the hash"
 );
 
+const scalarA = evaluateVerifiedBackportShadow({
+  ...baseInput,
+  eventId:"hash-scalars-a",
+  evidence:{
+    nullValue:null,
+    enabled:true,
+    disabled:false,
+    zero:0,
+    negative:-7.5,
+    text:"caffè ☕",
+    unicodeKey:{"è":"accented","東京":"tokyo"}
+  }
+});
+const scalarB = evaluateVerifiedBackportShadow({
+  ...baseInput,
+  eventId:"hash-scalars-b",
+  evidence:{
+    unicodeKey:{"東京":"tokyo","è":"accented"},
+    text:"caffè ☕",
+    negative:-7.5,
+    zero:0,
+    disabled:false,
+    enabled:true,
+    nullValue:null
+  }
+});
+assert.equal(
+  scalarA.evidence_hash,
+  scalarB.evidence_hash,
+  "Valid JSON scalars and Unicode keys must canonicalize deterministically"
+);
+
+assert.throws(
+  () => evaluateVerifiedBackportShadow({
+    ...baseInput,
+    evidence:{bad:undefined}
+  }),
+  /unsupported undefined/,
+  "Undefined evidence must be rejected rather than silently omitted"
+);
+
+assert.throws(
+  () => evaluateVerifiedBackportShadow({
+    ...baseInput,
+    evidence:{bad:1n}
+  }),
+  /unsupported bigint/,
+  "BigInt evidence must be rejected explicitly"
+);
+
+assert.throws(
+  () => evaluateVerifiedBackportShadow({
+    ...baseInput,
+    evidence:{bad:Number.NaN}
+  }),
+  /non-finite number/,
+  "NaN evidence must be rejected explicitly"
+);
+
+assert.throws(
+  () => evaluateVerifiedBackportShadow({
+    ...baseInput,
+    evidence:{bad:Number.POSITIVE_INFINITY}
+  }),
+  /non-finite number/,
+  "Infinite evidence must be rejected explicitly"
+);
+
+const cyclic = {};
+cyclic.self = cyclic;
+assert.throws(
+  () => evaluateVerifiedBackportShadow({
+    ...baseInput,
+    evidence:{cyclic}
+  }),
+  /circular reference/,
+  "Circular evidence must be rejected explicitly"
+);
+
+assert.throws(
+  () => evaluateVerifiedBackportShadow({
+    ...baseInput,
+    evidence:{date:new Date("2026-10-04T00:00:00Z")}
+  }),
+  /non-plain object/,
+  "Non-plain objects must be normalized by callers before entering evidence"
+);
+
 console.log("agentos verified shadow: PASS");
