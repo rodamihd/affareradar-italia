@@ -12,9 +12,11 @@ import { sourceReputationKeys, applySourceOutcome } from "../lib/source-reputati
 function authorized(req) {
   const cronSecret = process.env.CRON_SECRET;
   const publishSecret = process.env.PUBLISH_SECRET;
+  const schedulerSecret = process.env.AFFARERADAR_SCHEDULER_SECRET;
   return Boolean(
     (cronSecret && req.headers.authorization === `Bearer ${cronSecret}`) ||
-    (publishSecret && req.headers["x-affareradar-secret"] === publishSecret)
+    (publishSecret && req.headers["x-affareradar-secret"] === publishSecret) ||
+    (schedulerSecret && req.headers["x-affareradar-scheduler"] === schedulerSecret)
   );
 }
 
