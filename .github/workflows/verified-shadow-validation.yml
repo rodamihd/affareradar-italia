@@ -18,5 +18,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: Run observation-only shadow adapter test
+      - name: Run verified shadow adapter tests
         run: node test-agentos-verified-shadow.mjs
+      - name: Run verified shadow outcome registry tests
+        run: node test-verified-shadow-outcomes.mjs
+      - name: Run promotion readiness gate tests
+        run: node test-promotion-readiness.mjs
