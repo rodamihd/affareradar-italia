@@ -1,4 +1,5 @@
 // PRIME_EVENT_ENV_REFRESH_V1
+import crypto from "node:crypto";
 import { amazonAgentUserAgent, evaluateProductEligibility } from "../lib/amazon-compliance.js";
 import { agentOsEvent, universalEntityId } from "../lib/agentos-adapter.js";
 import { buildSignalQuarantine, extractAsinFromAmazonUrl } from "../lib/signal-quarantine.js";
@@ -10,15 +11,50 @@ import { sourceReputationKeys, applySourceOutcome } from "../lib/source-reputati
 // PREAPI_RUNTIME_CONFIG_V2
 // DEAL_SOURCE_SET_V1
 
-function authorized(req) {
+async function verifyGithubFallback(req) {
+  const token = String(req.headers["x-github-oidc-token"] || "").trim();
+  if (!token) return false;
+  const parts = token.split(".");
+  if (parts.length !== 3) return false;
+  try {
+    const header = JSON.parse(Buffer.from(parts[0], "base64url").toString("utf8"));
+    const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8"));
+    const now = Math.floor(Date.now() / 1000);
+    if (header.alg !== "RS256" || !header.kid) return false;
+    if (payload.iss !== "https://token.actions.githubusercontent.com") return false;
+    if (payload.repository !== "rodamihd/affareradar-italia") return false;
+    if (payload.ref !== "refs/heads/main") return false;
+    if (!["schedule","workflow_dispatch"].includes(payload.event_name)) return false;
+    if (!Number.isFinite(Number(payload.exp)) || Number(payload.exp) < now) return false;
+
+    const response = await fetch("https://token.actions.githubusercontent.com/.well-known/jwks");
+    if (!response.ok) return false;
+    const jwks = await response.json();
+    const jwk = Array.isArray(jwks.keys) ? jwks.keys.find(k => k.kid === header.kid) : null;
+    if (!jwk) return false;
+    const key = crypto.createPublicKey({ key:jwk, format:"jwk" });
+    return crypto.verify(
+      "RSA-SHA256",
+      Buffer.from(`${parts[0]}.${parts[1]}`),
+      key,
+      Buffer.from(parts[2], "base64url")
+    );
+  } catch {
+    return false;
+  }
+}
+
+async function authorized(req) {
   const cronSecret = process.env.CRON_SECRET;
   const publishSecret = process.env.PUBLISH_SECRET;
   const schedulerSecret = process.env.AFFARERADAR_SCHEDULER_SECRET;
-  return Boolean(
+  if (
     (cronSecret && req.headers.authorization === `Bearer ${cronSecret}`) ||
     (publishSecret && req.headers["x-affareradar-secret"] === publishSecret) ||
     (schedulerSecret && req.headers["x-affareradar-scheduler"] === schedulerSecret)
-  );
+  ) return { ok:true, trigger:req.headers["x-vercel-cron-schedule"] ? "vercel_cron" : "secret" };
+  if (await verifyGithubFallback(req)) return { ok:true, trigger:"github_oidc_fallback" };
+  return { ok:false, trigger:null };
 }
 
 function sourceUrls() {
@@ -735,8 +771,32 @@ export default async function handler(req, res) {
   if (req.method !== "GET" && req.method !== "POST") {
     return res.status(405).json({ ok:false, error:"method_not_allowed" });
   }
-  if (!authorized(req)) {
+  const auth = await authorized(req);
+  if (!auth.ok) {
     return res.status(401).json({ ok:false, error:"unauthorized" });
+  }
+
+  // GitHub runs 15 minutes after each expected primary slot. It only takes
+  // over when the primary cycle did not complete recently.
+  if (auth.trigger === "github_oidc_fallback" && redisConfig()) {
+    try {
+      const rr = await redisCommand("GET", "affareradar:multisource:last_run_at");
+      const lastRunAt = rr.result || null;
+      const lastMs = Date.parse(lastRunAt || "");
+      const ageMinutes = Number.isFinite(lastMs) ? Math.round((Date.now() - lastMs) / 60000) : null;
+      const freshnessMinutes = Math.max(10, Math.min(60, Number(process.env.AFFARERADAR_FALLBACK_FRESH_MINUTES || 30)));
+      if (ageMinutes != null && ageMinutes <= freshnessMinutes) {
+        await redisCommand("SET", "affareradar:fallback:last_check", JSON.stringify({
+          at:new Date().toISOString(), action:"skip", lastRunAt, ageMinutes
+        }), "EX", 172800);
+        return res.status(200).json({ ok:true, fallback:true, skipped:true, reason:"primary_recent", lastRunAt, ageMinutes });
+      }
+      await redisCommand("SET", "affareradar:fallback:last_check", JSON.stringify({
+        at:new Date().toISOString(), action:"takeover", lastRunAt, ageMinutes
+      }), "EX", 172800);
+    } catch (error) {
+      console.warn("[AffareRadar][fallback] freshness_check_failed", String(error?.message || error));
+    }
   }
 
   const preflight = runAgentOsSelfTest();
@@ -759,7 +819,7 @@ export default async function handler(req, res) {
         "affareradar:multisource:cycle_lock",
         JSON.stringify({
           at:new Date().toISOString(),
-          trigger:req.headers["x-affareradar-trigger"] || (req.headers["x-vercel-cron-schedule"] ? "vercel_cron" : "direct")
+          trigger:auth.trigger || "direct"
         }),
         "NX",
         "EX",
