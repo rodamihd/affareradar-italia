@@ -603,21 +603,41 @@ async function submitPreApi(req, deal) {
     return { attempted:true, ok:true, status:200, data:{ published:false, decision:"rejected", reason:"product_not_eligible", productEligibility:eligibility } };
   }
 
-  const maxPerDay = Math.max(1, Math.min(3, Number(process.env.PREAPI_MAX_PER_DAY || 1)));
   const now = new Date();
   const localOffsetHours = Number(process.env.AFFARERADAR_LOCAL_UTC_OFFSET_HOURS || 2);
-  const localHour = (now.getUTCHours() + localOffsetHours + 24) % 24;
+  const localNowMs = now.getTime() + localOffsetHours * 60 * 60 * 1000;
+  const localNow = new Date(localNowMs);
+  const localDay = localNow.toISOString().slice(0, 10);
+  const localHour = localNow.getUTCHours();
+
+  const eventStart = String(process.env.AFFARERADAR_EVENT_START_DATE || "").trim();
+  const eventEnd = String(process.env.AFFARERADAR_EVENT_END_DATE || "").trim();
+  const eventActive = Boolean(eventStart && eventEnd && localDay >= eventStart && localDay <= eventEnd);
+
+  const defaultMaxPerDay = Math.max(1, Math.min(3, Number(process.env.PREAPI_MAX_PER_DAY || 1)));
+  const eventMaxPerDay = Math.max(defaultMaxPerDay, Math.min(12, Number(process.env.PREAPI_EVENT_MAX_PER_DAY || 9)));
+  const maxPerDay = eventActive ? eventMaxPerDay : defaultMaxPerDay;
+
+  const eventSlotHours = String(process.env.PREAPI_EVENT_SLOT_HOURS || "8,10,12,14,16,18,20,22")
+    .split(",")
+    .map(v => Number(v.trim()))
+    .filter(v => Number.isInteger(v) && v >= 0 && v <= 23);
+
   const slot =
-    localHour >= 6 && localHour < 12 ? "morning" :
-    localHour >= 12 && localHour < 18 ? "afternoon" :
-    localHour >= 18 && localHour < 24 ? "evening" :
-    null;
+    eventActive
+      ? (eventSlotHours.includes(localHour) ? `event_${String(localHour).padStart(2, "0")}` : null)
+      : (
+          localHour >= 6 && localHour < 12 ? "morning" :
+          localHour >= 12 && localHour < 18 ? "afternoon" :
+          localHour >= 18 && localHour < 24 ? "evening" :
+          null
+        );
 
   if (!slot) {
-    return { attempted:true, ok:true, status:200, data:{ published:false, decision:"held", reason:"outside_publication_window", localHour } };
+    return { attempted:true, ok:true, status:200, data:{ published:false, decision:"held", reason:"outside_publication_window", localHour, eventActive } };
   }
 
-  const day = now.toISOString().slice(0, 10);
+  const day = localDay;
   const dayKey = `affareradar:preapi:day:${day}`;
   const slotKey = `affareradar:preapi:slot:${day}:${slot}`;
   const asinKey = `affareradar:preapi:asin:${asin}`;
@@ -697,7 +717,9 @@ async function submitPreApi(req, deal) {
           productEligibility:eligibility.status,
           dailyLimit:maxPerDay,
           publicationSlot:slot,
-          localHour
+          localHour,
+          eventActive,
+          eventWindow:eventActive ? { start:eventStart, end:eventEnd, slotHours:eventSlotHours } : null
         }
       }
     };
