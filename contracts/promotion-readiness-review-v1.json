@@ -1,0 +1,17 @@
+{
+  "contract": "agentos.promotion_readiness_review.v1",
+  "required_gates": [
+    "promotion_readiness_ready",
+    "statistical_false_block_bound_supported",
+    "cross_vertical_consistent",
+    "ci_green",
+    "verified_evidence",
+    "zero_risk_relaxations",
+    "automatic_promotion_disabled",
+    "human_review_required"
+  ],
+  "ready_status": "READY_FOR_HUMAN_REVIEW",
+  "contract_only_status": "CONTRACT_ONLY_EVIDENCE",
+  "automatic_promotion": false,
+  "human_review_required": true
+}
