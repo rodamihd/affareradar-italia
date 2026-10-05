@@ -1,0 +1,34 @@
+{
+  "contract": "agentos.cross_vertical_governance.v1",
+  "evidence_contract": "agentos.verified_evidence.v1",
+  "evidence_hash_version": "2",
+  "outcome_contract": "agentos.shadow_outcome.v1",
+  "promotion_contract": "agentos.promotion_readiness.v1",
+  "automatic_promotion": false,
+  "human_review_required": true,
+  "thresholds": {
+    "min_known_outcomes": 50,
+    "min_known_would_block": 20,
+    "max_false_block_rate": 0.05,
+    "max_risk_relaxations": 0,
+    "require_ci_green": true,
+    "require_verified_evidence": true
+  },
+  "verticals": {
+    "affareradar": {
+      "mode": "shadow",
+      "promotion_eligible": true,
+      "decision_order": ["PUBLISH", "REVIEW", "BLOCK"]
+    },
+    "quotai": {
+      "mode": "shadow",
+      "promotion_eligible": true,
+      "decision_order": ["PLAY", "WATCH", "REJECT"]
+    },
+    "sceltasemplice": {
+      "mode": "contract_only",
+      "promotion_eligible": false,
+      "decision_order": ["PROPOSE", "REVIEW", "BLOCK"]
+    }
+  }
+}
