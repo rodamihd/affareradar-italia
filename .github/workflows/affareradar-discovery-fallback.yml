@@ -1,13 +1,8 @@
 name: AffareRadar Discovery Fallback
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'api/**'
-      - 'lib/**'
-      - 'vercel.json'
-      - '.github/workflows/affareradar-discovery-fallback.yml'
+  # The primary path already deploys through Vercel on every push.
+  # Keep this workflow independent and low-noise: scheduled fallback + manual run only.
   schedule:
     - cron: "15 6,8,10,12,14,16,18,19,20 * * *"
   workflow_dispatch:
