@@ -1058,6 +1058,16 @@ export default async function handler(req, res) {
       }
     };
     const preApi = await submitPreApi(req, deal);
+    console.log("[AffareRadar][preapi]", JSON.stringify({
+      asin:deal.asin || null,
+      title:String(deal.title || "").slice(0, 100),
+      dealScore:deal.dealScore ?? null,
+      attempted:preApi?.attempted ?? null,
+      published:preApi?.data?.published === true,
+      decision:preApi?.data?.decision || null,
+      reason:preApi?.data?.reason || null,
+      slot:preApi?.data?.safeguards?.publicationSlot || preApi?.data?.slot || null
+    }));
     await updateSourceStats(deal, preApi?.data?.published === true ? {
       ok:true,
       status:200,
