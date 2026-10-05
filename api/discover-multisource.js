@@ -1,7 +1,7 @@
 // PRIME_EVENT_ENV_REFRESH_V2
 // PRIME_EVENT_ENV_REFRESH_V1
 import crypto from "node:crypto";
-import { amazonAgentUserAgent, evaluateProductEligibility } from "../lib/amazon-compliance.js";
+import { amazonAgentUserAgent, evaluateProductEligibility, amazonPriceDisplayAllowed, amazonPromotionDisplayAllowed } from "../lib/amazon-compliance.js";
 import { agentOsEvent, universalEntityId } from "../lib/agentos-adapter.js";
 import { buildSignalQuarantine, extractAsinFromAmazonUrl } from "../lib/signal-quarantine.js";
 import { offerDagTemplate, dagSummary } from "../lib/agentos-dag.js";
@@ -646,6 +646,41 @@ async function submitPreApi(req, deal) {
     return { attempted:true, ok:true, status:200, data:{ published:false, decision:"held", reason:"redis_required" } };
   }
 
+  const priceAllowed = amazonPriceDisplayAllowed(deal);
+  const promotionAllowed = amazonPromotionDisplayAllowed(deal, Date.now());
+  const hasCompletePricing = Boolean(deal.price && deal.oldPrice && deal.discount);
+
+  if (!priceAllowed || !hasCompletePricing) {
+    return {
+      attempted:true,
+      ok:true,
+      status:200,
+      data:{
+        published:false,
+        decision:"held",
+        reason:"amazon_verified_complete_pricing_required",
+        priceDisplayAllowed:priceAllowed,
+        hasPrice:Boolean(deal.price),
+        hasOldPrice:Boolean(deal.oldPrice),
+        hasDiscount:Boolean(deal.discount)
+      }
+    };
+  }
+
+  if ((deal.coupon || deal.stack) && !promotionAllowed) {
+    return {
+      attempted:true,
+      ok:true,
+      status:200,
+      data:{
+        published:false,
+        decision:"held",
+        reason:"amazon_verified_promotion_required",
+        promotionDisplayAllowed:promotionAllowed
+      }
+    };
+  }
+
   const clean = value => String(value || "")
     .replace(/https?:\/\/\S+/gi, " ")
     .replace(/(?:EUR|€)\s*\d{1,5}(?:[.,]\d{1,2})?/gi, " ")
@@ -664,23 +699,29 @@ async function submitPreApi(req, deal) {
     dealType:"preapi_pick",
     source:deal.source || "external_signal",
     sourceVerified:true,
-    price:null,
-    oldPrice:null,
-    effectivePrice:null,
-    discount:null,
-    coupon:null,
-    stack:null,
-    historicalLow:false,
-    prime:false,
+    price:deal.price,
+    oldPrice:deal.oldPrice,
+    effectivePrice:deal.effectivePrice || deal.price,
+    discount:deal.discount,
+    coupon:promotionAllowed ? (deal.coupon || null) : null,
+    stack:promotionAllowed ? (deal.stack || null) : null,
+    historicalLow:deal.historicalLow === true,
+    prime:deal.prime === true,
     imageUrl:null,
     imageSource:null,
     imageSuppressed:true,
-    suppressPriceDisplay:true,
+    suppressPriceDisplay:false,
     preApiMode:true,
-    commercialClaimsSuppressed:true,
+    commercialClaimsSuppressed:false,
+    priceSource:deal.priceSource || deal.amazonDataSource || null,
+    amazonDataSource:deal.amazonDataSource || deal.priceSource || null,
+    priceVerifiedByAmazon:deal.priceVerifiedByAmazon === true,
+    promotionVerifiedByAmazon:deal.promotionVerifiedByAmazon === true,
+    couponVerifiedByAmazon:deal.couponVerifiedByAmazon === true,
+    lastVerifiedAt:deal.lastVerifiedAt || deal.verifiedAt || null,
     signalScore,
-    dealScore:null,
-    reliabilityScore:null
+    dealScore:deal.dealScore ?? null,
+    reliabilityScore:deal.reliabilityScore ?? null
   };
 
   const eligibility = evaluateProductEligibility(candidate);
@@ -795,8 +836,8 @@ async function submitPreApi(req, deal) {
         telegramMessageId:data.telegram_message_id || null,
         signalScore,
         safeguards:{
-          priceSuppressed:true,
-          promotionSuppressed:true,
+          priceSuppressed:false,
+          promotionSuppressed:!promotionAllowed,
           imageSuppressed:true,
           sourceVerified:true,
           productEligibility:eligibility.status,
