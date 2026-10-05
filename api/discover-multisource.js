@@ -184,12 +184,57 @@ async function mapWithConcurrency(items, limit, worker) {
   return out;
 }
 
-function parsePrice(text) {
+function euroValues(text) {
   const s = String(text || "");
-  const matches = [...s.matchAll(/(?:€\s*([0-9]{1,5}(?:[.,][0-9]{1,2})?)|([0-9]{1,5}(?:[.,][0-9]{1,2})?)\s*€)/g)];
-  if (!matches.length) return null;
-  const raw = matches[0][1] || matches[0][2];
-  return `${raw.replace(".", ",")} €`;
+  return [...s.matchAll(/(?:€\s*([0-9]{1,5}(?:[.,][0-9]{1,2})?)|([0-9]{1,5}(?:[.,][0-9]{1,2})?)\s*€)/g)]
+    .map(m => (m[1] || m[2] || "").replace(".", ","))
+    .filter(Boolean);
+}
+
+function parsePrice(text) {
+  const values = euroValues(text);
+  return values.length ? `${values[0]} €` : null;
+}
+
+function parseOldPrice(text) {
+  const s = String(text || "");
+  const explicit =
+    s.match(/(?:invece\s+di|anzich[eé]|prima|prezzo\s+(?:originale|di\s+listino)|listino|da)\s*[:\-]?\s*(?:€\s*([0-9]{1,5}(?:[.,][0-9]{1,2})?)|([0-9]{1,5}(?:[.,][0-9]{1,2})?)\s*€)/i);
+  if (explicit) {
+    const raw = explicit[1] || explicit[2];
+    return `${raw.replace(".", ",")} €`;
+  }
+
+  const values = euroValues(text);
+  if (values.length < 2) return null;
+  const current = Number(values[0].replace(",", "."));
+  const candidates = values.slice(1)
+    .map(v => ({ raw:v, n:Number(v.replace(",", ".")) }))
+    .filter(x => Number.isFinite(x.n) && x.n > current);
+  if (!candidates.length) return null;
+  candidates.sort((a,b) => b.n - a.n);
+  return `${candidates[0].raw} €`;
+}
+
+function parseCoupon(text) {
+  const s = decodeHtml(String(text || ""));
+  if (!/coupon|codice\s+sconto|buono|applica\s+coupon|stack/i.test(s)) return null;
+
+  const code = s.match(/(?:codice\s+sconto|coupon|codice)\s*[:\-]?\s*([A-Z0-9_-]{4,24})\b/i);
+  if (code && !/^(SCONTO|AMAZON|PRIME|DISPONIBILE)$/i.test(code[1])) {
+    return `Codice ${code[1].toUpperCase()}`;
+  }
+
+  const pct = s.match(/(?:coupon|buono|sconto)\s*(?:del|di)?\s*([1-9][0-9]?)\s*%/i);
+  if (pct) return `Coupon -${pct[1]}%`;
+
+  const amount = s.match(/(?:coupon|buono|sconto)\s*(?:da|di)?\s*(?:€\s*([0-9]{1,4}(?:[.,][0-9]{1,2})?)|([0-9]{1,4}(?:[.,][0-9]{1,2})?)\s*€)/i);
+  if (amount) {
+    const raw = amount[1] || amount[2];
+    return `Coupon ${raw.replace(".", ",")} €`;
+  }
+
+  return "Coupon disponibile";
 }
 
 function parseDiscount(text) {
@@ -223,9 +268,10 @@ function itemFromText(text, source, imageUrl = null, publishedAt = null) {
   const price = parsePrice(text);
   if (!amazonUrl || !price) return null;
 
+  const oldPrice = parseOldPrice(text);
   const discount = parseDiscount(text);
   const dealType = detectType(text);
-  const coupon = /coupon|codice sconto|stack/i.test(text) ? "Promo rilevata dalla fonte" : null;
+  const coupon = parseCoupon(text);
   const title = decodeHtml(text)
     .replace(/https?:\/\/\S+/g, "")
     .replace(/\s+/g, " ")
@@ -235,6 +281,7 @@ function itemFromText(text, source, imageUrl = null, publishedAt = null) {
   return {
     title,
     price,
+    oldPrice,
     effectivePrice:price,
     discount,
     coupon,
