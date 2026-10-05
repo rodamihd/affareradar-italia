@@ -1,0 +1,26 @@
+{
+  "contract": "agentos.controlled_promotion_design.v1",
+  "stages": [
+    "CONTRACT_ONLY",
+    "SHADOW",
+    "ADVISORY",
+    "GATED_ENFORCEMENT"
+  ],
+  "allowed_forward_transitions": [
+    ["SHADOW", "ADVISORY"],
+    ["ADVISORY", "GATED_ENFORCEMENT"]
+  ],
+  "direct_shadow_to_enforcement": false,
+  "automatic_promotion": false,
+  "execution_permitted_in_step_13": false,
+  "human_review_required": true,
+  "gated_enforcement_design": {
+    "max_canary_traffic_pct": 5,
+    "scope_allowlist_required": true,
+    "rollback_required": true,
+    "minimum_advisory_known_outcomes": 100,
+    "statistical_support_required": "FALSE_BLOCK_BOUND_SUPPORTED",
+    "cross_vertical_consistency_required": "CONSISTENT"
+  },
+  "rollback_target": "SHADOW"
+}
