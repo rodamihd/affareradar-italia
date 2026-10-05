@@ -34,7 +34,7 @@ jobs:
           set -euo pipefail
           curl --fail-with-body --silent --show-error \
             --retry 2 --retry-delay 5 \
-            -X POST "https://affareradar-italia.vercel.app/api/fallback-discovery" \
+            -X POST "https://affareradar-italia.vercel.app/api/discover-multisource" \
             -H "Content-Type: application/json" \
             -H "x-github-oidc-token: $OIDC_TOKEN" \
             -d '{}'
