@@ -33,6 +33,7 @@ import crypto from "node:crypto";
 import { startRuntimeObservation, runtimeSuccess, runtimeFailure } from "../lib/runtime-observability.js";
 import { redisConfig, redisCommand } from "../lib/redis-rest.js";
 import { classifyDecisionEvent, recordDecisionEvent, recordPublicationOutcome } from "../lib/decision-outcome-registry.js";
+import { buildAffareRadarVerifiedShadowTelemetry } from "../lib/affareradar-verified-shadow-telemetry.js";
 import { enqueueQuantoItaliaDistribution } from "../lib/distribution-engine.js";
 import { normalizeOpportunity } from "../lib/universal-opportunity.js";
 import { evaluateOpportunityEconomics } from "../lib/convenience-engine.js";
@@ -101,7 +102,17 @@ async function trackMetric(event, body, extra = {}) {
       ]);
       await redisCommand("LTRIM", "affareradar:events", 0, 199);
       if (classifyDecisionEvent(event, extra) !== "OTHER") {
-        await recordDecisionEvent(event, body, { ...extra, dealId:payload.dealId });
+        const recorded = await recordDecisionEvent(event, body, { ...extra, dealId:payload.dealId });
+        if (recorded?.record?.decisionId) {
+          const shadow = buildAffareRadarVerifiedShadowTelemetry(
+            recorded.record,
+            event,
+            payload,
+            extra
+          );
+          await redisCommand("LPUSH", "affareradar:agentos:verified-shadow", JSON.stringify(shadow));
+          await redisCommand("LTRIM", "affareradar:agentos:verified-shadow", 0, 999);
+        }
       }
     }
   } catch {}

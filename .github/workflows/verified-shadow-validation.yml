@@ -1,0 +1,50 @@
+name: AgentOS Verified Shadow Validation
+
+on:
+  push:
+    branches:
+      - agentos-33-10-verified-shadow-validation
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  shadow-adapter:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Run verified shadow adapter tests
+        run: node test-agentos-verified-shadow.mjs
+      - name: Run verified shadow outcome registry tests
+        run: node test-verified-shadow-outcomes.mjs
+      - name: Run promotion readiness gate tests
+        run: node test-promotion-readiness.mjs
+      - name: Run cross-vertical evidence collector tests
+        run: node test-cross-vertical-shadow-report.mjs
+      - name: Run evidence ingestion and validation dashboard tests
+        run: node test-shadow-evidence-dashboard.mjs
+      - name: Run real outcome joiner tests
+        run: node test-affareradar-real-outcome-joiner.mjs
+      - name: Run verified shadow live-path telemetry tests
+        run: |
+          node test-affareradar-verified-shadow-telemetry.mjs
+          node --check api/auto-publish.js
+      - name: Run statistical outcome validation tests
+        run: node test-statistical-outcome-validation.mjs
+      - name: Run cross-vertical consistency tests
+        run: node test-cross-vertical-consistency.mjs
+      - name: Run composite promotion readiness review tests
+        run: node test-promotion-readiness-review.mjs
+      - name: Run controlled promotion design tests
+        run: node test-controlled-promotion-design.mjs
+      - name: Run limited enforcement canary tests
+        run: node test-canary-limited-enforcement.mjs
+      - name: Run advisory zero-effect tests
+        run: node test-advisory-shadow-surface.mjs
+      - name: Run real advisory accumulation tests
+        run: node test-real-advisory-outcome-accumulator.mjs
