@@ -73,6 +73,27 @@ export default async function handler(req, res) {
     return res.status(400).json({ ok:false, error:"missing_required_fields" });
   }
 
+  if (!isReward) {
+    const completePricing = Boolean(price && oldPrice && discount);
+    if (!publication.priceDisplayAllowed || !completePricing) {
+      return res.status(422).json({
+        ok:false,
+        error:"verified_complete_pricing_required",
+        priceDisplayAllowed:publication.priceDisplayAllowed,
+        hasPrice:Boolean(price),
+        hasOldPrice:Boolean(oldPrice),
+        hasDiscount:Boolean(discount)
+      });
+    }
+    if ((coupon || stack) && !publication.promotionDisplayAllowed) {
+      return res.status(422).json({
+        ok:false,
+        error:"verified_promotion_required",
+        promotionDisplayAllowed:publication.promotionDisplayAllowed
+      });
+    }
+  }
+
   const esc = s => String(s ?? "")
     .replaceAll("&","&amp;")
     .replaceAll("<","&lt;")
