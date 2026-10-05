@@ -36,3 +36,5 @@ jobs:
           node --check api/auto-publish.js
       - name: Run statistical outcome validation tests
         run: node test-statistical-outcome-validation.mjs
+      - name: Run cross-vertical consistency tests
+        run: node test-cross-vertical-consistency.mjs
