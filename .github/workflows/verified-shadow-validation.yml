@@ -38,3 +38,5 @@ jobs:
         run: node test-statistical-outcome-validation.mjs
       - name: Run cross-vertical consistency tests
         run: node test-cross-vertical-consistency.mjs
+      - name: Run composite promotion readiness review tests
+        run: node test-promotion-readiness-review.mjs
