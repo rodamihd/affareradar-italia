@@ -230,7 +230,16 @@ export default async function handler(req, res) {
   const payload = imageUrl ? {
     chat_id: chatId, photo: imageUrl, caption, parse_mode:"HTML", reply_markup: keyboard
   } : {
-    chat_id: chatId, text: caption, parse_mode:"HTML", disable_web_page_preview:false, reply_markup: keyboard
+    chat_id: chatId,
+    text: caption,
+    parse_mode:"HTML",
+    link_preview_options:{
+      is_disabled:false,
+      url:finalAmazonUrl,
+      prefer_large_media:true,
+      show_above_text:true
+    },
+    reply_markup: keyboard
   };
 
   const r = await fetch(endpoint, {
