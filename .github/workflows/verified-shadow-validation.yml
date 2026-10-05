@@ -42,3 +42,5 @@ jobs:
         run: node test-promotion-readiness-review.mjs
       - name: Run controlled promotion design tests
         run: node test-controlled-promotion-design.mjs
+      - name: Run limited enforcement canary tests
+        run: node test-canary-limited-enforcement.mjs
