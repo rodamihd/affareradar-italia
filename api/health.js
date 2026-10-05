@@ -164,6 +164,17 @@ export default async function handler(req, res) {
   const publishSecret = process.env.PUBLISH_SECRET;
   const amazonPartnerTag = process.env.AMAZON_PARTNER_TAG;
   const expectedAmazonPartnerTag = "affareradar-21";
+  const creatorsApiConfigured = Boolean(
+    process.env.AMAZON_CREATORS_CREDENTIAL_ID &&
+    process.env.AMAZON_CREATORS_CREDENTIAL_SECRET &&
+    amazonPartnerTag
+  );
+  const paApiConfigured = Boolean(
+    process.env.AMAZON_PAAPI_ACCESS_KEY &&
+    process.env.AMAZON_PAAPI_SECRET_KEY &&
+    amazonPartnerTag
+  );
+  const pricePublicationReady = creatorsApiConfigured || paApiConfigured;
 
   const result = {
     ok:true,
@@ -172,6 +183,10 @@ export default async function handler(req, res) {
     publishSecretConfigured:Boolean(publishSecret),
     amazonPartnerTagConfigured:Boolean(amazonPartnerTag),
     amazonPartnerTagMatchesExpected:amazonPartnerTag === expectedAmazonPartnerTag,
+    creatorsApiConfigured,
+    paApiConfigured,
+    pricePublicationReady,
+    pricePublicationBlockReason:pricePublicationReady ? null : "amazon_official_price_provider_not_configured",
     targetType:channelTarget ? "channel" : "fallback_chat",
     target:channelTarget || null,
     botTokenValid:false,
