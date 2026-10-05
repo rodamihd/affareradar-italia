@@ -1,0 +1,15 @@
+{
+  "contract": "agentos.limited_enforcement_canary.v1",
+  "requires_real_evidence": true,
+  "minimum_real_advisory_outcomes": 100,
+  "max_traffic_pct": 5,
+  "allowlist_required": true,
+  "rollback_required": true,
+  "automatic_promotion": false,
+  "automatic_rollback": false,
+  "vertical_effects": {
+    "affareradar": ["PUBLISH_TO_REVIEW"],
+    "quotai": ["PLAY_TO_WATCH"],
+    "sceltasemplice": []
+  }
+}
