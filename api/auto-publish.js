@@ -34,6 +34,10 @@ import { startRuntimeObservation, runtimeSuccess, runtimeFailure } from "../lib/
 import { redisConfig, redisCommand } from "../lib/redis-rest.js";
 import { classifyDecisionEvent, recordDecisionEvent, recordPublicationOutcome } from "../lib/decision-outcome-registry.js";
 import { buildAffareRadarVerifiedShadowTelemetry } from "../lib/affareradar-verified-shadow-telemetry.js";
+import { enqueueQuantoItaliaDistribution } from "../lib/distribution-engine.js";
+import { normalizeOpportunity } from "../lib/universal-opportunity.js";
+import { evaluateOpportunityEconomics } from "../lib/convenience-engine.js";
+import { prePublishValidate, rewardPrePublishValidate } from "../lib/pre-publish-validator.js";
 
 const memory = globalThis.__affareRadarState || {
   published:new Map(),
@@ -106,81 +110,12 @@ async function trackMetric(event, body, extra = {}) {
             payload,
             extra
           );
-
           await redisCommand("LPUSH", "affareradar:agentos:verified-shadow", JSON.stringify(shadow));
           await redisCommand("LTRIM", "affareradar:agentos:verified-shadow", 0, 999);
         }
       }
     }
   } catch {}
-}
-
-function parseTimestamp(value) {
-  if (!value) return null;
-  const ts = Date.parse(value);
-  return Number.isFinite(ts) ? ts : null;
-}
-
-function validateAmazonUrl(value) {
-  try {
-    const u = new URL(value);
-    const host = u.hostname.toLowerCase();
-    return host === "amazon.it" || host.endsWith(".amazon.it") || host === "amzn.eu" || host === "primevideo.com" || host === "www.primevideo.com" || host === "link.amazon";
-  } catch {
-    return false;
-  }
-}
-
-function revalidate(body, now) {
-  const mode = String(process.env.REVALIDATION_MODE || "soft").toLowerCase();
-  const maxAgeMinutes = Number(process.env.REVALIDATION_MAX_AGE_MINUTES || 10);
-  const maxAgeMs = Math.max(1, maxAgeMinutes) * 60 * 1000;
-  const verifiedAtRaw = body.lastVerifiedAt || body.verifiedAt || body.verificationTime;
-  const verifiedAt = parseTimestamp(verifiedAtRaw);
-  const warnings = [];
-  const failures = [];
-
-  if (!validateAmazonUrl(body.amazonUrl)) {
-    failures.push("invalid_amazon_url");
-  }
-
-  if (verifiedAt) {
-    const age = now - verifiedAt;
-    if (age < -60 * 1000) failures.push("verification_timestamp_in_future");
-    if (age > maxAgeMs) failures.push("stale_verification");
-  } else if (mode === "strict") {
-    failures.push("missing_verification_timestamp");
-  } else {
-    warnings.push("missing_verification_timestamp");
-  }
-
-  if (body.priceVerified === false) failures.push("price_not_verified");
-  else if (body.priceVerified !== true) {
-    if (mode === "strict") failures.push("missing_price_verification");
-    else warnings.push("missing_price_verification");
-  }
-
-  const hasCoupon = Boolean(body.coupon || body.stack || String(body.dealType || "").toLowerCase() === "coupon_stack");
-  if (hasCoupon) {
-    if (body.couponVerified === false) failures.push("coupon_not_verified");
-    else if (body.couponVerified !== true) {
-      if (mode === "strict") failures.push("missing_coupon_verification");
-      else warnings.push("missing_coupon_verification");
-    }
-  }
-
-  if (body.stock === false || String(body.stock).toLowerCase() === "out_of_stock") {
-    failures.push("out_of_stock");
-  }
-
-  return {
-    passed:failures.length === 0,
-    mode,
-    maxAgeMinutes,
-    verifiedAt:verifiedAt ? new Date(verifiedAt).toISOString() : null,
-    failures,
-    warnings
-  };
 }
 
 function cleanupMemory(now) {
@@ -654,13 +589,8 @@ export default async function handler(req, res) {
   }
 
   const revalidation = isReward
-    ? {
-        passed:validateAmazonUrl(body.amazonUrl),
-        mode:"reward",
-        failures:validateAmazonUrl(body.amazonUrl) ? [] : ["invalid_amazon_url"],
-        warnings:[]
-      }
-    : revalidate(body, now);
+    ? rewardPrePublishValidate(body, now)
+    : prePublishValidate(body, now);
   const dealId = buildDealId(body);
 
   const trafficSource = evaluateTrafficSource("telegram");
@@ -1100,6 +1030,9 @@ export default async function handler(req, res) {
     }
   });
   const distribution = channelPlan(body);
+  const universalOpportunity = normalizeOpportunity(body, { dealId, channel:"telegram", contentType:distribution.contentType });
+  const opportunityEconomics = evaluateOpportunityEconomics(universalOpportunity);
+  const quantoItaliaDistribution = await enqueueQuantoItaliaDistribution({ ...body, opportunity:universalOpportunity }, distribution, { dealId });
   const storefrontDecision = isReward
     ? {
         candidate:reward.storefrontSupported,
@@ -1133,6 +1066,9 @@ export default async function handler(req, res) {
     telegramMessageId:publishData.telegram_message_id,
     lifecycleStatus:lifecycle.status,
     distribution,
+    universalOpportunity,
+    opportunityEconomics,
+    quantoItaliaDistribution,
     storefrontDecision,
     creatorQuality,
     publishingWindow:window,
@@ -1226,6 +1162,9 @@ export default async function handler(req, res) {
     },
     thresholds:{ minDealScore, minReliability },
     distribution,
+    universalOpportunity,
+    opportunityEconomics,
+    quantoItaliaDistribution,
     storefront:{ decision:storefrontDecision, content:storefront },
     creatorQuality,
     publishingWindow:window,
