@@ -749,6 +749,34 @@ export default async function handler(req, res) {
     });
   }
 
+  // Cross-scheduler lock: Vercel Cron and the independent GitHub fallback
+  // may occasionally overlap. Only one discovery cycle is allowed to enter
+  // the production pipeline during this short window.
+  if (redisConfig()) {
+    try {
+      const lock = await redisCommand(
+        "SET",
+        "affareradar:multisource:cycle_lock",
+        JSON.stringify({
+          at:new Date().toISOString(),
+          trigger:req.headers["x-affareradar-trigger"] || (req.headers["x-vercel-cron-schedule"] ? "vercel_cron" : "direct")
+        }),
+        "NX",
+        "EX",
+        180
+      );
+      if (lock.result !== "OK") {
+        return res.status(200).json({
+          ok:true,
+          skipped:true,
+          reason:"discovery_cycle_already_running"
+        });
+      }
+    } catch (error) {
+      console.warn("[AffareRadar][discover] lock_unavailable", String(error?.message || error));
+    }
+  }
+
   const sources = sourceUrls();
   if (!sources.length) {
     return res.status(503).json({
@@ -953,7 +981,14 @@ export default async function handler(req, res) {
       await Promise.all([
         redisCommand("SET", "affareradar:multisource:last_run_at", new Date().toISOString(), "EX", 172800),
         redisCommand("SET", "affareradar:multisource:last_candidate_count", String(unique.length), "EX", 172800),
-        redisCommand("SET", "affareradar:multisource:last_source_count", String(sources.length), "EX", 172800)
+        redisCommand("SET", "affareradar:multisource:last_source_count", String(sources.length), "EX", 172800),
+        redisCommand(
+          "SET",
+          "affareradar:multisource:last_trigger",
+          String(req.headers["x-affareradar-trigger"] || (req.headers["x-vercel-cron-schedule"] ? "vercel_cron" : "direct")),
+          "EX",
+          172800
+        )
       ]);
     }
   } catch {}
