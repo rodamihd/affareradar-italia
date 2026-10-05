@@ -1,3 +1,4 @@
+// PRIME_EVENT_ENV_REFRESH_V1
 import { amazonAgentUserAgent, evaluateProductEligibility } from "../lib/amazon-compliance.js";
 import { agentOsEvent, universalEntityId } from "../lib/agentos-adapter.js";
 import { buildSignalQuarantine, extractAsinFromAmazonUrl } from "../lib/signal-quarantine.js";
