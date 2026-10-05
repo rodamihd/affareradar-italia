@@ -44,3 +44,5 @@ jobs:
         run: node test-controlled-promotion-design.mjs
       - name: Run limited enforcement canary tests
         run: node test-canary-limited-enforcement.mjs
+      - name: Run advisory zero-effect tests
+        run: node test-advisory-shadow-surface.mjs
