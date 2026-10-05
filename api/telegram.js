@@ -126,9 +126,11 @@ export default async function handler(req, res) {
   const shareOfferText = [
     "🔥 Guarda questa offerta trovata da AffareRadar Italia",
     title,
-    isReward ? (reward.label || "Programma Amazon") : (effectivePrice ? `Prezzo effettivo: ${effectivePrice}` : `Prezzo: ${price}`),
-    isReward && reward.rewardAmountEUR != null ? `Ricompensa indicata: €${reward.rewardAmountEUR}` : null,
-    !isReward && discount ? `Sconto: ${discount}` : null
+    isReward ? (reward.label || "Programma Amazon") : (effectivePrice ? `Prezzo attuale: ${effectivePrice}` : `Prezzo attuale: ${price}`),
+    !isReward && oldPrice ? `Prezzo originale: ${oldPrice}` : null,
+    !isReward && discount ? `Sconto: ${discount}` : null,
+    !isReward && coupon ? `Coupon: ${coupon}` : null,
+    isReward && reward.rewardAmountEUR != null ? `Ricompensa indicata: €${reward.rewardAmountEUR}` : null
   ].filter(Boolean).join("\n");
 
   const shareOfferUrl =
@@ -147,9 +149,11 @@ export default async function handler(req, res) {
   const whatsappShareText = [
     "🔥 Guarda questa offerta trovata da AffareRadar Italia",
     title,
-    isReward ? (reward.label || "Programma Amazon") : (effectivePrice ? `Prezzo effettivo: ${effectivePrice}` : `Prezzo: ${price}`),
-    isReward && reward.rewardAmountEUR != null ? `Ricompensa indicata: €${reward.rewardAmountEUR}` : null,
+    isReward ? (reward.label || "Programma Amazon") : (effectivePrice ? `Prezzo attuale: ${effectivePrice}` : `Prezzo attuale: ${price}`),
+    !isReward && oldPrice ? `Prezzo originale: ${oldPrice}` : null,
     !isReward && discount ? `Sconto: ${discount}` : null,
+    !isReward && coupon ? `Coupon: ${coupon}` : null,
+    isReward && reward.rewardAmountEUR != null ? `Ricompensa indicata: €${reward.rewardAmountEUR}` : null,
     finalAmazonUrl
   ].filter(Boolean).join("\n");
 
