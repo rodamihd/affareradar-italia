@@ -40,3 +40,5 @@ jobs:
         run: node test-cross-vertical-consistency.mjs
       - name: Run composite promotion readiness review tests
         run: node test-promotion-readiness-review.mjs
+      - name: Run controlled promotion design tests
+        run: node test-controlled-promotion-design.mjs
