@@ -273,6 +273,50 @@ async function searchItems(token, cfg, keywords) {
   return data?.searchResult?.items || [];
 }
 
+async function getItems(token, cfg, itemIds) {
+  const ids = [...new Set((Array.isArray(itemIds) ? itemIds : [itemIds])
+    .map(v => String(v || "").trim().toUpperCase())
+    .filter(v => /^[A-Z0-9]{10}$/.test(v)))].slice(0, 10);
+
+  if (!ids.length) return [];
+
+  const r = await fetch(`${API_BASE}/getItems`, {
+    method:"POST",
+    headers:{
+      Authorization:`Bearer ${token}`,
+      "Content-Type":"application/json",
+      "x-marketplace":MARKETPLACE,
+      "User-Agent":amazonAgentUserAgent("AffareRadarCreators")
+    },
+    body:JSON.stringify({
+      itemIds:ids,
+      itemIdType:"ASIN",
+      marketplace:MARKETPLACE,
+      partnerTag:cfg.partnerTag,
+      resources:[
+        "images.primary.medium",
+        "itemInfo.title",
+        "offersV2.listings.availability",
+        "offersV2.listings.dealDetails",
+        "offersV2.listings.price",
+        "offersV2.listings.type"
+      ]
+    })
+  });
+
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    const msg =
+      data?.message ||
+      data?.errors?.[0]?.message ||
+      data?.errors?.[0]?.code ||
+      `http_${r.status}`;
+    throw new Error(`creators_getitems_failed:${msg}`);
+  }
+
+  return data?.itemsResult?.items || [];
+}
+
 function fmtPercent(value) {
   const n = Number(value || 0);
   return Number.isFinite(n) && n > 0 ? `-${Math.round(n)}%` : null;
@@ -525,7 +569,7 @@ async function processVerificationQueue(req, token, cfg, paCfg) {
           attempts.push({ provider:"creators_api", ok:false, skipped:true, reason:"circuit_open", retryAfter:health.retryAfter || null });
         } else {
           try {
-            const items = await searchItems(token, cfg, asin);
+            const items = await getItems(token, cfg, [asin]);
             const exact = items.find(item => String(item?.asin || "").toUpperCase() === asin);
             verifiedDeal = exact ? toDeal(exact, `verify:${asin}`) : null;
             attempts.push({ provider:"creators_api", ok:Boolean(verifiedDeal) });
