@@ -8,8 +8,9 @@ import argparse
 import json
 from pathlib import Path
 
-EXPECTED = frozenset('''integration-evidence-gates evidence-first-verification repository-threat-review requirements-code-traceability audit-spreadsheet-review invariant-property-tests search-visibility-audit event-analytics-audit connector-schema-design change-diff-review webapp-acceptance-tests vercel-react-performance-review dependency-supply-chain-audit structured-data-schema-audit skill-discovery-governance find-skills agentos-systematic-debugging assuranceos-audit-workpapers assuranceos-reconciliations quotai-statistical-analysis quotai-data-validation affareradar-ui-review'''.split())
-SCHEMA = 'skills-workflow-routing/1.0'
+EXPECTED = frozenset('''integration-evidence-gates evidence-first-verification repository-threat-review requirements-code-traceability audit-spreadsheet-review invariant-property-tests search-visibility-audit event-analytics-audit connector-schema-design change-diff-review webapp-acceptance-tests vercel-react-performance-review dependency-supply-chain-audit structured-data-schema-audit skill-discovery-governance find-skills agentos-systematic-debugging assuranceos-audit-workpapers assuranceos-reconciliations quotai-statistical-analysis quotai-data-validation affareradar-ui-review test-driven-development agent-browser'''.split())
+ACTIVATION_PENDING = frozenset({'test-driven-development', 'agent-browser'})
+SCHEMA = 'skills-workflow-routing/1.1'
 
 
 def validate(manifest):
@@ -22,6 +23,10 @@ def validate(manifest):
         errors.append('automatic_execution_must_be_false')
     if manifest.get('policy', {}).get('require_human_approval') is not True:
         errors.append('require_human_approval_missing')
+    if set(manifest.get('activation_pending_ids', [])) != ACTIVATION_PENDING:
+        errors.append('activation_pending_evidence_required')
+    if len(manifest.get('activation_pending_ids', [])) != len(ACTIVATION_PENDING):
+        errors.append('duplicate_activation_pending_ids')
     declared = manifest.get('skills', [])
     if len(declared) != len(set(declared)):
         errors.append('duplicate_skill_ids')
@@ -75,14 +80,18 @@ def route(manifest, project, stage):
     step = next((s for s in p['stages'] if s['id'] == stage), None)
     if not step:
         return {'status': 'NOT_CONFIGURED', 'automatic_execution': False}
+    pending = sorted(set(step['skills']) & ACTIVATION_PENDING)
+    available = [skill for skill in step['skills'] if skill not in ACTIVATION_PENDING]
     return {
         'status': 'REFERENCE_ONLY' if p['mode'] == 'PAUSED' else 'HUMAN_REVIEW_REQUIRED',
         'project': project, 'stage': stage, 'mode': p['mode'],
-        'candidate_skills': step['skills'],
+        'candidate_skills': available,
+        'pending_skill_ids': pending,
+        'activation_verified': not pending,
         'required_evidence': step.get('required_evidence', []),
         'requires_human_review': True,
         'runtime_skill_invocation': False, 'automatic_execution': False,
-        'note': 'Skills are ChatGPT procedures, not imported executable services. Explicitly invoke relevant installed Skill during a supervised review.'
+        'note': 'Only candidate_skills are session-verified; pending_skill_ids are not callable until catalog listing and direct instruction read succeed. No Skill is imported into application runtime.'
     }
 
 
@@ -100,7 +109,7 @@ def main():
         print(json.dumps(result, ensure_ascii=False, sort_keys=True, indent=2))
         raise SystemExit(0 if result['status'] in {'HUMAN_REVIEW_REQUIRED','REFERENCE_ONLY'} else 2)
     errors = validate(manifest)
-    print(json.dumps({'status': 'VALIDATED_OFFLINE' if not errors else 'BLOCKED', 'errors': errors, 'skills_count': len(manifest.get('skills', [])), 'projects_count': len(manifest.get('projects', {})), 'automatic_execution': False}, sort_keys=True))
+    print(json.dumps({'status': 'VALIDATED_OFFLINE' if not errors else 'BLOCKED', 'errors': errors, 'skills_count': len(manifest.get('skills', [])), 'runtime_verified_count': len(EXPECTED - ACTIVATION_PENDING), 'activation_pending_count': len(ACTIVATION_PENDING), 'projects_count': len(manifest.get('projects', {})), 'automatic_execution': False}, sort_keys=True))
     raise SystemExit(0 if not errors else 2)
 
 
