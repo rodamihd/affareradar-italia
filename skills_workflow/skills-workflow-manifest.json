@@ -1,5 +1,5 @@
 {
-  "schema": "skills-workflow-routing/1.0",
+  "schema": "skills-workflow-routing/1.1",
   "catalog_date": "2026-10-10",
   "skills": [
     "integration-evidence-gates",
@@ -23,13 +23,15 @@
     "assuranceos-reconciliations",
     "quotai-statistical-analysis",
     "quotai-data-validation",
-    "affareradar-ui-review"
+    "affareradar-ui-review",
+    "test-driven-development",
+    "agent-browser"
   ],
   "policy": {
     "automatic_execution": false,
     "runtime_skill_invocation": false,
     "require_human_approval": true,
-    "purpose": "Supervised routing of installed ChatGPT Skills only; no production imports or autonomous code execution."
+    "purpose": "Supervised routing of a 24-Skill catalog (22 runtime-verified; 2 awaiting discovery). No application-side import or automatic execution."
   },
   "projects": {
     "agentos": {
@@ -92,13 +94,16 @@
             "change-diff-review",
             "invariant-property-tests",
             "evidence-first-verification",
-            "webapp-acceptance-tests"
+            "webapp-acceptance-tests",
+            "test-driven-development"
           ],
           "required_evidence": [
             "base_sha",
             "head_sha",
             "local_test_output",
-            "human_approval"
+            "human_approval",
+            "red_green_refactor_evidence",
+            "isolated_test_result"
           ],
           "action": "REVIEW",
           "requires_human_review": true
@@ -108,11 +113,14 @@
           "name": "Assess Mission Control frontend",
           "skills": [
             "vercel-react-performance-review",
-            "webapp-acceptance-tests"
+            "webapp-acceptance-tests",
+            "agent-browser"
           ],
           "required_evidence": [
             "source_diff",
-            "preview_scope"
+            "preview_scope",
+            "approved_nonproduction_preview",
+            "synthetic_or_readonly_qa"
           ],
           "action": "REVIEW",
           "requires_human_review": true
@@ -163,11 +171,14 @@
           "name": "Perform independent reconciliations",
           "skills": [
             "assuranceos-reconciliations",
-            "invariant-property-tests"
+            "invariant-property-tests",
+            "test-driven-development"
           ],
           "required_evidence": [
             "bank_gl_external_evidence",
-            "reconciling_items"
+            "reconciling_items",
+            "red_green_refactor_evidence",
+            "isolated_test_result"
           ],
           "action": "REVIEW",
           "requires_human_review": true
@@ -218,6 +229,23 @@
             "open_findings"
           ],
           "action": "HOLD",
+          "requires_human_review": true
+        },
+        {
+          "id": "studio-ui-review",
+          "name": "Check studio UI under approved isolated session",
+          "skills": [
+            "webapp-acceptance-tests",
+            "agent-browser",
+            "evidence-first-verification"
+          ],
+          "required_evidence": [
+            "approved_nonproduction_preview",
+            "synthetic_test_identity",
+            "no_client_data",
+            "readonly_browser_record"
+          ],
+          "action": "REVIEW",
           "requires_human_review": true
         }
       ]
@@ -273,13 +301,16 @@
           "name": "Calibrate model against OOS and SHADOW",
           "skills": [
             "quotai-statistical-analysis",
-            "invariant-property-tests"
+            "invariant-property-tests",
+            "test-driven-development"
           ],
           "required_evidence": [
             "holdout",
             "calibration",
             "clv_sample",
-            "leakage_checks"
+            "leakage_checks",
+            "red_green_refactor_evidence",
+            "isolated_test_result"
           ],
           "action": "REVIEW",
           "requires_human_review": true
@@ -308,14 +339,34 @@
           "skills": [
             "change-diff-review",
             "repository-threat-review",
-            "agentos-systematic-debugging"
+            "agentos-systematic-debugging",
+            "test-driven-development"
           ],
           "required_evidence": [
             "base_commit",
             "tests",
-            "shadow_observations"
+            "shadow_observations",
+            "red_green_refactor_evidence",
+            "isolated_test_result"
           ],
           "action": "HOLD",
+          "requires_human_review": true
+        },
+        {
+          "id": "shadow-console-ui",
+          "name": "Read-only shadow console journey",
+          "skills": [
+            "webapp-acceptance-tests",
+            "agent-browser",
+            "quotai-data-validation"
+          ],
+          "required_evidence": [
+            "approved_nonproduction_preview",
+            "synthetic_test_identity",
+            "no_live_bet_actions",
+            "shadow_scope"
+          ],
+          "action": "REVIEW",
           "requires_human_review": true
         }
       ]
@@ -350,13 +401,16 @@
           "skills": [
             "invariant-property-tests",
             "evidence-first-verification",
-            "change-diff-review"
+            "change-diff-review",
+            "test-driven-development"
           ],
           "required_evidence": [
             "final_price",
             "coupon",
             "affiliate_disclosure",
-            "gate_state"
+            "gate_state",
+            "red_green_refactor_evidence",
+            "isolated_test_result"
           ],
           "action": "HOLD",
           "requires_human_review": true
@@ -367,12 +421,15 @@
           "skills": [
             "affareradar-ui-review",
             "webapp-acceptance-tests",
-            "vercel-react-performance-review"
+            "vercel-react-performance-review",
+            "agent-browser"
           ],
           "required_evidence": [
             "responsive_preview",
             "keyboard_access",
-            "source_diff"
+            "source_diff",
+            "approved_nonproduction_preview",
+            "synthetic_or_readonly_qa"
           ],
           "action": "REVIEW",
           "requires_human_review": true
@@ -424,12 +481,15 @@
           "skills": [
             "connector-schema-design",
             "invariant-property-tests",
-            "event-analytics-audit"
+            "event-analytics-audit",
+            "test-driven-development"
           ],
           "required_evidence": [
             "bill_consent",
             "tariff_source",
-            "validity_period"
+            "validity_period",
+            "red_green_refactor_evidence",
+            "isolated_test_result"
           ],
           "action": "ADVISORY",
           "requires_human_review": true
@@ -441,16 +501,24 @@
             "affareradar-ui-review",
             "webapp-acceptance-tests",
             "search-visibility-audit",
-            "structured-data-schema-audit"
+            "structured-data-schema-audit",
+            "agent-browser"
           ],
           "required_evidence": [
             "offline_prototype",
-            "user_disclosure"
+            "user_disclosure",
+            "approved_nonproduction_preview",
+            "synthetic_or_readonly_qa"
           ],
           "action": "ADVISORY",
           "requires_human_review": true
         }
       ]
     }
-  }
+  },
+  "activation_pending_ids": [
+    "test-driven-development",
+    "agent-browser"
+  ],
+  "activation_evidence_policy": "Runtime skills list AND direct instruction read required before enabling either new skill; ChatGPT UI upload alone is not independently verified."
 }
