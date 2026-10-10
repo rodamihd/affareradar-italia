@@ -6,14 +6,14 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
-from skills_workflow_gate import EXPECTED, route, validate
+from skills_workflow_gate import EXPECTED, ACTIVATION_PENDING, route, validate
 
 MANIFEST = json.loads((ROOT / 'skills-workflow-manifest.json').read_text(encoding='utf-8'))
 
 
 class SkillsWorkflowTest(unittest.TestCase):
     def test_complete_catalog(self):
-        self.assertEqual(len(EXPECTED), 22)
+        self.assertEqual(len(EXPECTED), 24)
         self.assertEqual(validate(MANIFEST), [])
 
     def test_five_projects(self):
@@ -73,6 +73,49 @@ class SkillsWorkflowTest(unittest.TestCase):
             for step in project['stages']:
                 step['skills'] = [x for x in step['skills'] if x != 'structured-data-schema-audit']
         self.assertTrue(any(x.startswith('unrouted_skills:') for x in validate(bad)))
+
+
+    def test_two_skills_pending_discovery(self):
+        self.assertEqual(ACTIVATION_PENDING, {'test-driven-development', 'agent-browser'})
+        self.assertEqual(set(MANIFEST['activation_pending_ids']), ACTIVATION_PENDING)
+
+    def test_missing_pending_status_blocks(self):
+        bad = copy.deepcopy(MANIFEST)
+        bad['activation_pending_ids'] = []
+        self.assertIn('activation_pending_evidence_required', validate(bad))
+        self.assertEqual(route(bad, 'agentos', 'change-review')['status'], 'BLOCKED')
+
+    def test_pending_skills_are_not_eligible_for_invocation(self):
+        for project, config in MANIFEST['projects'].items():
+            for stage in config['stages']:
+                result = route(MANIFEST, project, stage['id'])
+                self.assertFalse(set(result['candidate_skills']) & ACTIVATION_PENDING)
+                self.assertEqual(set(result['pending_skill_ids']),
+                                 set(stage['skills']) & ACTIVATION_PENDING)
+                self.assertFalse(result['automatic_execution'])
+
+    def test_new_skills_routed_to_all_five_projects(self):
+        for project, config in MANIFEST['projects'].items():
+            all_skills = {skill for stage in config['stages'] for skill in stage['skills']}
+            self.assertIn('test-driven-development', all_skills, project)
+            self.assertIn('agent-browser', all_skills, project)
+
+    def test_browser_stages_require_isolated_previews(self):
+        for project, config in MANIFEST['projects'].items():
+            for stage in config['stages']:
+                if 'agent-browser' in stage['skills']:
+                    self.assertIn('approved_nonproduction_preview',
+                                  stage['required_evidence'])
+                    self.assertTrue(stage['requires_human_review'])
+
+    def test_quotai_and_assuranceos_browser_stages_are_supervised(self):
+        for project, stage_id in [('quotai', 'shadow-console-ui'),
+                                  ('assuranceos', 'studio-ui-review')]:
+            stage = next(stage for stage in MANIFEST['projects'][project]['stages']
+                         if stage['id'] == stage_id)
+            self.assertEqual(stage['action'], 'REVIEW')
+            self.assertIn('agent-browser', stage['skills'])
+            self.assertIn('webapp-acceptance-tests', stage['skills'])
 
 
 if __name__ == '__main__':
