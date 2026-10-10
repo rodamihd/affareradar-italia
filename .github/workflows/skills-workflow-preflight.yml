@@ -1,0 +1,25 @@
+name: Skills Workflow Preflight (read-only)
+
+on:
+  pull_request:
+    paths:
+      - 'skills_workflow/**'
+      - '.github/workflows/skills-workflow-preflight.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-skill-routing:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate 22 Skills mappings (stdlib only)
+        run: python skills_workflow/scripts/skills_workflow_gate.py skills_workflow/skills-workflow-manifest.json
+      - name: Offline safety tests
+        run: python -m unittest discover -s skills_workflow/tests -v
