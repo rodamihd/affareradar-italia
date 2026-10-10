@@ -1,0 +1,456 @@
+{
+  "schema": "skills-workflow-routing/1.0",
+  "catalog_date": "2026-10-10",
+  "skills": [
+    "integration-evidence-gates",
+    "evidence-first-verification",
+    "repository-threat-review",
+    "requirements-code-traceability",
+    "audit-spreadsheet-review",
+    "invariant-property-tests",
+    "search-visibility-audit",
+    "event-analytics-audit",
+    "connector-schema-design",
+    "change-diff-review",
+    "webapp-acceptance-tests",
+    "vercel-react-performance-review",
+    "dependency-supply-chain-audit",
+    "structured-data-schema-audit",
+    "skill-discovery-governance",
+    "find-skills",
+    "agentos-systematic-debugging",
+    "assuranceos-audit-workpapers",
+    "assuranceos-reconciliations",
+    "quotai-statistical-analysis",
+    "quotai-data-validation",
+    "affareradar-ui-review"
+  ],
+  "policy": {
+    "automatic_execution": false,
+    "runtime_skill_invocation": false,
+    "require_human_approval": true,
+    "purpose": "Supervised routing of installed ChatGPT Skills only; no production imports or autonomous code execution."
+  },
+  "projects": {
+    "agentos": {
+      "mode": "SHADOW",
+      "runtime_enabled": false,
+      "hard_stops": [
+        "NO_AUTONOMOUS_PROMOTION",
+        "NO_MAIN_AUTO_SYNC"
+      ],
+      "stages": [
+        {
+          "id": "skill-discovery",
+          "name": "Discover and govern Skills",
+          "skills": [
+            "find-skills",
+            "skill-discovery-governance",
+            "dependency-supply-chain-audit"
+          ],
+          "required_evidence": [
+            "installed_skill_uris",
+            "source_licenses"
+          ],
+          "action": "REVIEW",
+          "requires_human_review": true
+        },
+        {
+          "id": "connector-design",
+          "name": "Approve least-privilege connectors",
+          "skills": [
+            "connector-schema-design",
+            "repository-threat-review",
+            "requirements-code-traceability"
+          ],
+          "required_evidence": [
+            "scope",
+            "permission_matrix",
+            "threat_evidence"
+          ],
+          "action": "REVIEW",
+          "requires_human_review": true
+        },
+        {
+          "id": "incident",
+          "name": "Investigate runtime incidents",
+          "skills": [
+            "agentos-systematic-debugging",
+            "integration-evidence-gates"
+          ],
+          "required_evidence": [
+            "reproducible_failure_logs",
+            "revision"
+          ],
+          "action": "REVIEW",
+          "requires_human_review": true
+        },
+        {
+          "id": "change-review",
+          "name": "Review isolated patch before promotion",
+          "skills": [
+            "change-diff-review",
+            "invariant-property-tests",
+            "evidence-first-verification",
+            "webapp-acceptance-tests"
+          ],
+          "required_evidence": [
+            "base_sha",
+            "head_sha",
+            "local_test_output",
+            "human_approval"
+          ],
+          "action": "REVIEW",
+          "requires_human_review": true
+        },
+        {
+          "id": "mission-control-ui",
+          "name": "Assess Mission Control frontend",
+          "skills": [
+            "vercel-react-performance-review",
+            "webapp-acceptance-tests"
+          ],
+          "required_evidence": [
+            "source_diff",
+            "preview_scope"
+          ],
+          "action": "REVIEW",
+          "requires_human_review": true
+        }
+      ]
+    },
+    "assuranceos": {
+      "mode": "SUPERVISED",
+      "runtime_enabled": false,
+      "hard_stops": [
+        "NO_HUMAN_SIGNOFF_NO_FINAL_OPINION",
+        "NO_EVIDENCE_NO_CONCLUSION",
+        "NO_CROSS_PRODUCT_DIRECT_LOGIC_IMPORT"
+      ],
+      "stages": [
+        {
+          "id": "engagement-intake",
+          "name": "Classify engagement and evidence scope",
+          "skills": [
+            "assuranceos-audit-workpapers",
+            "requirements-code-traceability"
+          ],
+          "required_evidence": [
+            "engagement_period",
+            "applicable_isa_italia",
+            "authorisation"
+          ],
+          "action": "REVIEW",
+          "requires_human_review": true
+        },
+        {
+          "id": "audit-data",
+          "name": "Inspect trial balances and unbundling evidence",
+          "skills": [
+            "audit-spreadsheet-review",
+            "integration-evidence-gates"
+          ],
+          "required_evidence": [
+            "source_period",
+            "control_totals",
+            "source_provenance"
+          ],
+          "action": "REVIEW",
+          "requires_human_review": true
+        },
+        {
+          "id": "reconcile",
+          "name": "Perform independent reconciliations",
+          "skills": [
+            "assuranceos-reconciliations",
+            "invariant-property-tests"
+          ],
+          "required_evidence": [
+            "bank_gl_external_evidence",
+            "reconciling_items"
+          ],
+          "action": "REVIEW",
+          "requires_human_review": true
+        },
+        {
+          "id": "isa-evidence",
+          "name": "Risk-based audit tests and professional findings",
+          "skills": [
+            "assuranceos-audit-workpapers",
+            "requirements-code-traceability",
+            "evidence-first-verification"
+          ],
+          "required_evidence": [
+            "assertions",
+            "sampling_rationale",
+            "sufficiency_appropriateness"
+          ],
+          "action": "REVIEW",
+          "requires_human_review": true
+        },
+        {
+          "id": "connector-security",
+          "name": "Review audit data connectors",
+          "skills": [
+            "connector-schema-design",
+            "repository-threat-review",
+            "dependency-supply-chain-audit"
+          ],
+          "required_evidence": [
+            "consent",
+            "access_scope",
+            "lineage"
+          ],
+          "action": "REVIEW",
+          "requires_human_review": true
+        },
+        {
+          "id": "signoff",
+          "name": "Professional review, approvals and closure",
+          "skills": [
+            "evidence-first-verification",
+            "integration-evidence-gates",
+            "change-diff-review"
+          ],
+          "required_evidence": [
+            "reviewer_approval",
+            "signed_workpapers",
+            "open_findings"
+          ],
+          "action": "HOLD",
+          "requires_human_review": true
+        }
+      ]
+    },
+    "quotai": {
+      "mode": "SHADOW",
+      "runtime_enabled": false,
+      "freshness_seconds": {
+        "prematch": 120,
+        "live": 15
+      },
+      "hard_stops": [
+        "NO_BET_EXECUTION",
+        "NO_VALUE_BET_WITHOUT_MEASURED_REQUIRED_GATES",
+        "NO_SUREBET_WITHOUT_NET_ROI_AND_COMPATIBLE_SETTLEMENT"
+      ],
+      "stages": [
+        {
+          "id": "provider-ingest",
+          "name": "Validate odds and provider evidence",
+          "skills": [
+            "quotai-data-validation",
+            "dependency-supply-chain-audit"
+          ],
+          "required_evidence": [
+            "provider",
+            "event_id",
+            "captured_at",
+            "market_identity"
+          ],
+          "action": "REVIEW",
+          "requires_human_review": true
+        },
+        {
+          "id": "market-preflight",
+          "name": "Verify dual freshness and settlement",
+          "skills": [
+            "quotai-data-validation",
+            "requirements-code-traceability",
+            "integration-evidence-gates"
+          ],
+          "required_evidence": [
+            "prematch_120s",
+            "live_15s",
+            "per_leg_timestamp",
+            "settlement"
+          ],
+          "action": "REVIEW",
+          "requires_human_review": true
+        },
+        {
+          "id": "model-validation",
+          "name": "Calibrate model against OOS and SHADOW",
+          "skills": [
+            "quotai-statistical-analysis",
+            "invariant-property-tests"
+          ],
+          "required_evidence": [
+            "holdout",
+            "calibration",
+            "clv_sample",
+            "leakage_checks"
+          ],
+          "action": "REVIEW",
+          "requires_human_review": true
+        },
+        {
+          "id": "decision-review",
+          "name": "Reconcile EV, DQS, QES LCB, UDS, bankroll",
+          "skills": [
+            "quotai-statistical-analysis",
+            "quotai-data-validation",
+            "evidence-first-verification"
+          ],
+          "required_evidence": [
+            "dqs",
+            "qes_lcb",
+            "uds",
+            "execution_market",
+            "bankroll"
+          ],
+          "action": "HOLD",
+          "requires_human_review": true
+        },
+        {
+          "id": "release-review",
+          "name": "Compare and validate SHADOW change",
+          "skills": [
+            "change-diff-review",
+            "repository-threat-review",
+            "agentos-systematic-debugging"
+          ],
+          "required_evidence": [
+            "base_commit",
+            "tests",
+            "shadow_observations"
+          ],
+          "action": "HOLD",
+          "requires_human_review": true
+        }
+      ]
+    },
+    "affareradar": {
+      "mode": "SUPERVISED",
+      "runtime_enabled": false,
+      "hard_stops": [
+        "NO_AUTOMATIC_PUBLICATION",
+        "NO_UNVERIFIED_PRICE_PROMOTION",
+        "NO_CREDENTIAL_EXPOSURE"
+      ],
+      "stages": [
+        {
+          "id": "discovery",
+          "name": "Inspect multi-source price discovery",
+          "skills": [
+            "dependency-supply-chain-audit",
+            "integration-evidence-gates"
+          ],
+          "required_evidence": [
+            "price_sources",
+            "capture_time",
+            "merchant_scope"
+          ],
+          "action": "REVIEW",
+          "requires_human_review": true
+        },
+        {
+          "id": "prepublish",
+          "name": "Verify final offer before publication",
+          "skills": [
+            "invariant-property-tests",
+            "evidence-first-verification",
+            "change-diff-review"
+          ],
+          "required_evidence": [
+            "final_price",
+            "coupon",
+            "affiliate_disclosure",
+            "gate_state"
+          ],
+          "action": "HOLD",
+          "requires_human_review": true
+        },
+        {
+          "id": "web-ui",
+          "name": "Review offer cards and mobile UX",
+          "skills": [
+            "affareradar-ui-review",
+            "webapp-acceptance-tests",
+            "vercel-react-performance-review"
+          ],
+          "required_evidence": [
+            "responsive_preview",
+            "keyboard_access",
+            "source_diff"
+          ],
+          "action": "REVIEW",
+          "requires_human_review": true
+        },
+        {
+          "id": "search-schema",
+          "name": "Audit SEO and merchant claims",
+          "skills": [
+            "search-visibility-audit",
+            "structured-data-schema-audit"
+          ],
+          "required_evidence": [
+            "indexability",
+            "jsonld",
+            "onpage_match"
+          ],
+          "action": "REVIEW",
+          "requires_human_review": true
+        },
+        {
+          "id": "analytics",
+          "name": "Review attribution and privacy",
+          "skills": [
+            "event-analytics-audit",
+            "requirements-code-traceability"
+          ],
+          "required_evidence": [
+            "consent",
+            "affiliate_click_id",
+            "event_definition"
+          ],
+          "action": "REVIEW",
+          "requires_human_review": true
+        }
+      ]
+    },
+    "sceltasemplice": {
+      "mode": "PAUSED",
+      "runtime_enabled": false,
+      "hard_stops": [
+        "NO_AUTOMATIC_SWITCH",
+        "NO_UNVERIFIED_QUOTE",
+        "NO_LIVE_PUBLICATION"
+      ],
+      "stages": [
+        {
+          "id": "tariff-design",
+          "name": "Design bill to quotation controls",
+          "skills": [
+            "connector-schema-design",
+            "invariant-property-tests",
+            "event-analytics-audit"
+          ],
+          "required_evidence": [
+            "bill_consent",
+            "tariff_source",
+            "validity_period"
+          ],
+          "action": "ADVISORY",
+          "requires_human_review": true
+        },
+        {
+          "id": "pwa-readiness",
+          "name": "Inspect prototype UX and discoverability",
+          "skills": [
+            "affareradar-ui-review",
+            "webapp-acceptance-tests",
+            "search-visibility-audit",
+            "structured-data-schema-audit"
+          ],
+          "required_evidence": [
+            "offline_prototype",
+            "user_disclosure"
+          ],
+          "action": "ADVISORY",
+          "requires_human_review": true
+        }
+      ]
+    }
+  }
+}
