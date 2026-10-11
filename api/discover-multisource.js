@@ -648,9 +648,9 @@ async function submitPreApi(req, deal) {
 
   const priceAllowed = amazonPriceDisplayAllowed(deal);
   const promotionAllowed = amazonPromotionDisplayAllowed(deal, Date.now());
-  const hasCompletePricing = Boolean(deal.price && deal.oldPrice && deal.discount);
+  const pricelessMode = String(process.env.AFFARERADAR_PRICELESS_SIGNALS_ENABLED || "false").trim().toLowerCase() === "true";
 
-  if (!priceAllowed || !hasCompletePricing) {
+  if (!priceAllowed && !pricelessMode) {
     return {
       attempted:true,
       ok:true,
@@ -659,15 +659,12 @@ async function submitPreApi(req, deal) {
         published:false,
         decision:"held",
         reason:"amazon_verified_complete_pricing_required",
-        priceDisplayAllowed:priceAllowed,
-        hasPrice:Boolean(deal.price),
-        hasOldPrice:Boolean(deal.oldPrice),
-        hasDiscount:Boolean(deal.discount)
+        priceDisplayAllowed:false
       }
     };
   }
 
-  if ((deal.coupon || deal.stack) && !promotionAllowed) {
+  if ((deal.coupon || deal.stack) && !promotionAllowed && !pricelessMode) {
     return {
       attempted:true,
       ok:true,
@@ -676,7 +673,7 @@ async function submitPreApi(req, deal) {
         published:false,
         decision:"held",
         reason:"amazon_verified_promotion_required",
-        promotionDisplayAllowed:promotionAllowed
+        promotionDisplayAllowed:false
       }
     };
   }
@@ -693,26 +690,27 @@ async function submitPreApi(req, deal) {
   const candidate = {
     title:clean(deal.title).slice(0, 140) || `Prodotto Amazon ${asin}`,
     category:clean(deal.category).slice(0, 60) || "Amazon",
-    reason:"Segnalazione prodotto selezionata da AffareRadar. Prezzo e disponibilità vanno verificati direttamente su Amazon.",
+    reason:"Segnalazione prodotto selezionata da AffareRadar. Prezzo, promozioni e disponibilità vanno verificati direttamente su Amazon.",
     amazonUrl,
     asin,
-    dealType:"preapi_pick",
+    dealType:pricelessMode && !priceAllowed ? "product_signal" : "preapi_pick",
     source:deal.source || "external_signal",
     sourceVerified:true,
-    price:deal.price,
-    oldPrice:deal.oldPrice,
-    effectivePrice:deal.effectivePrice || deal.price,
-    discount:deal.discount,
-    coupon:promotionAllowed ? (deal.coupon || null) : null,
-    stack:promotionAllowed ? (deal.stack || null) : null,
-    historicalLow:deal.historicalLow === true,
-    prime:deal.prime === true,
+    price:pricelessMode && !priceAllowed ? null : deal.price,
+    oldPrice:pricelessMode && !priceAllowed ? null : deal.oldPrice,
+    effectivePrice:pricelessMode && !priceAllowed ? null : (deal.effectivePrice || deal.price),
+    discount:pricelessMode && !priceAllowed ? null : deal.discount,
+    coupon:pricelessMode && !priceAllowed ? null : (promotionAllowed ? (deal.coupon || null) : null),
+    stack:pricelessMode && !priceAllowed ? null : (promotionAllowed ? (deal.stack || null) : null),
+    historicalLow:pricelessMode && !priceAllowed ? false : deal.historicalLow === true,
+    prime:pricelessMode && !priceAllowed ? false : deal.prime === true,
     imageUrl:null,
     imageSource:null,
     imageSuppressed:true,
-    suppressPriceDisplay:false,
+    suppressPriceDisplay:pricelessMode && !priceAllowed,
     preApiMode:true,
-    commercialClaimsSuppressed:false,
+    pricelessSignal:pricelessMode && !priceAllowed,
+    commercialClaimsSuppressed:pricelessMode && !priceAllowed,
     priceSource:deal.priceSource || deal.amazonDataSource || null,
     amazonDataSource:deal.amazonDataSource || deal.priceSource || null,
     priceVerifiedByAmazon:deal.priceVerifiedByAmazon === true,
@@ -836,7 +834,7 @@ async function submitPreApi(req, deal) {
         telegramMessageId:data.telegram_message_id || null,
         signalScore,
         safeguards:{
-          priceSuppressed:false,
+          priceSuppressed:candidate.pricelessSignal === true,
           promotionSuppressed:!promotionAllowed,
           imageSuppressed:true,
           sourceVerified:true,
