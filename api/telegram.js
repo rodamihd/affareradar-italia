@@ -73,7 +73,13 @@ export default async function handler(req, res) {
     return res.status(400).json({ ok:false, error:"missing_required_fields" });
   }
 
-  if (!isReward) {
+  const pricelessSignal =
+    body.pricelessSignal === true &&
+    body.sourceVerified === true &&
+    Boolean(asin) &&
+    body.commercialClaimsSuppressed === true;
+
+  if (!isReward && !pricelessSignal) {
     const completePricing = Boolean(price && oldPrice && discount);
     if (!publication.priceDisplayAllowed || !completePricing) {
       return res.status(422).json({
@@ -94,6 +100,13 @@ export default async function handler(req, res) {
     }
   }
 
+  if (pricelessSignal && (price || oldPrice || effectivePrice || discount || coupon || stack || historicalLow === true)) {
+    return res.status(422).json({
+      ok:false,
+      error:"priceless_signal_contains_commercial_claims"
+    });
+  }
+
   const esc = s => String(s ?? "")
     .replaceAll("&","&amp;")
     .replaceAll("<","&lt;")
@@ -102,6 +115,7 @@ export default async function handler(req, res) {
   const scoreNum = Number(dealScore);
   const autoBadge =
     isReward ? "🎁 AMAZON REWARD" :
+    pricelessSignal ? "📡 OFFERTA SEGNALATA" :
     historicalLow ? "🏆 MINIMO STORICO" :
     dealType === "price_error" ? "⚡ PRICE ERROR" :
     coupon || stack ? "🏷 COUPON STACK" :
@@ -112,6 +126,7 @@ export default async function handler(req, res) {
   const channelUrl = bodyChannelUrl || process.env.TELEGRAM_CHANNEL_URL || "";
   const contentType =
     isReward ? "reward" :
+    pricelessSignal ? "product_signal" :
     historicalLow ? "historical_low" :
     dealType === "price_error" ? "price_error" :
     (coupon || stack) ? "coupon_stack" :
@@ -145,9 +160,9 @@ export default async function handler(req, res) {
   });
 
   const shareOfferText = [
-    "🔥 Guarda questa offerta trovata da AffareRadar Italia",
+    pricelessSignal ? "📡 Guarda questa segnalazione trovata da AffareRadar Italia" : "🔥 Guarda questa offerta trovata da AffareRadar Italia",
     title,
-    isReward ? (reward.label || "Programma Amazon") : (effectivePrice ? `Prezzo attuale: ${effectivePrice}` : `Prezzo attuale: ${price}`),
+    pricelessSignal ? "Prezzo e disponibilità: verifica su Amazon" : (isReward ? (reward.label || "Programma Amazon") : (effectivePrice ? `Prezzo attuale: ${effectivePrice}` : `Prezzo attuale: ${price}`)),
     !isReward && oldPrice ? `Prezzo originale: ${oldPrice}` : null,
     !isReward && discount ? `Sconto: ${discount}` : null,
     !isReward && coupon ? `Coupon: ${coupon}` : null,
@@ -168,9 +183,9 @@ export default async function handler(req, res) {
   });
 
   const whatsappShareText = [
-    "🔥 Guarda questa offerta trovata da AffareRadar Italia",
+    pricelessSignal ? "📡 Guarda questa segnalazione trovata da AffareRadar Italia" : "🔥 Guarda questa offerta trovata da AffareRadar Italia",
     title,
-    isReward ? (reward.label || "Programma Amazon") : (effectivePrice ? `Prezzo attuale: ${effectivePrice}` : `Prezzo attuale: ${price}`),
+    pricelessSignal ? "Prezzo e disponibilità: verifica su Amazon" : (isReward ? (reward.label || "Programma Amazon") : (effectivePrice ? `Prezzo attuale: ${effectivePrice}` : `Prezzo attuale: ${price}`)),
     !isReward && oldPrice ? `Prezzo originale: ${oldPrice}` : null,
     !isReward && discount ? `Sconto: ${discount}` : null,
     !isReward && coupon ? `Coupon: ${coupon}` : null,
@@ -222,12 +237,16 @@ export default async function handler(req, res) {
     isReward && reward.validUntil ? `⏳ Valida fino a: ${esc(reward.validUntil)}` : null,
     coupon ? `🏷 Coupon: <b>${esc(coupon)}</b>` : null,
     stack ? `🧩 Stack promo: ${esc(stack)}` : null,
-    Number.isFinite(scoreNum) ? `🎯 Deal Score: <b>${Math.max(0, Math.min(100, Math.round(scoreNum)))}/100</b>` : null,
-    prime === true ? "⭐ Prime" : null,
+    !pricelessSignal && Number.isFinite(scoreNum) ? `🎯 Deal Score: <b>${Math.max(0, Math.min(100, Math.round(scoreNum)))}/100</b>` : null,
+    !pricelessSignal && prime === true ? "⭐ Prime" : null,
     shortReason ? `💡 ${esc(shortReason)}` : null,
     asin ? `🔎 ASIN: <code>${esc(asin)}</code>` : null,
     "",
-    isReward ? "ℹ️ Requisiti e ricompense possono cambiare: verifica sempre i termini Amazon aggiornati." : "ℹ️ Prezzo, coupon e disponibilità possono cambiare su Amazon.",
+    isReward
+      ? "ℹ️ Requisiti e ricompense possono cambiare: verifica sempre i termini Amazon aggiornati."
+      : pricelessSignal
+        ? "ℹ️ Prezzo, eventuali promozioni e disponibilità non sono mostrati: verificali direttamente su Amazon."
+        : "ℹ️ Prezzo, coupon e disponibilità possono cambiare su Amazon.",
     "👍 Utile   🔥 Affare forte   ❌ Non più valido",
     publication.sanitized ? "ℹ️ Prezzo/promozione non mostrati perché non verificati tramite strumenti Amazon consentiti." : null,
     "📢 Pubblicità — Link affiliato Amazon. Per te nessun costo aggiuntivo."
