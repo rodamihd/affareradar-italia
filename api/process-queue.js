@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 function redisConfig() {
   const url =
     process.env.UPSTASH_REDIS_REST_URL ||
@@ -26,16 +27,51 @@ async function redisCommand(command, ...args) {
   return { configured:true, result:data.result ?? null };
 }
 
-function authorized(req) {
+async function verifyGithubQueueOidc(req) {
+  const token = String(req.headers["x-github-oidc-token"] || "").trim();
+  if (!token) return false;
+  const parts = token.split(".");
+  if (parts.length !== 3) return false;
+  try {
+    const header = JSON.parse(Buffer.from(parts[0], "base64url").toString("utf8"));
+    const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8"));
+    const now = Math.floor(Date.now() / 1000);
+    if (header.alg !== "RS256" || !header.kid) return false;
+    if (payload.iss !== "https://token.actions.githubusercontent.com") return false;
+    if (payload.repository !== "rodamihd/affareradar-italia") return false;
+    if (payload.ref !== "refs/heads/main") return false;
+    if (!["schedule","workflow_dispatch"].includes(payload.event_name)) return false;
+    if (!Number.isFinite(Number(payload.exp)) || Number(payload.exp) < now) return false;
+
+    const response = await fetch("https://token.actions.githubusercontent.com/.well-known/jwks");
+    if (!response.ok) return false;
+    const jwks = await response.json();
+    const jwk = Array.isArray(jwks.keys) ? jwks.keys.find(k => k.kid === header.kid) : null;
+    if (!jwk) return false;
+    const key = crypto.createPublicKey({ key:jwk, format:"jwk" });
+    return crypto.verify(
+      "RSA-SHA256",
+      Buffer.from(`${parts[0]}.${parts[1]}`),
+      key,
+      Buffer.from(parts[2], "base64url")
+    );
+  } catch {
+    return false;
+  }
+}
+
+async function authorized(req) {
   const cronSecret = process.env.CRON_SECRET;
   const publishSecret = process.env.PUBLISH_SECRET;
   const bearer = req.headers.authorization;
   const publisher = req.headers["x-affareradar-secret"];
 
-  return Boolean(
+  if (
     (cronSecret && bearer === `Bearer ${cronSecret}`) ||
     (publishSecret && publisher === publishSecret)
-  );
+  ) return true;
+
+  return verifyGithubQueueOidc(req);
 }
 
 export default async function handler(req, res) {
@@ -43,7 +79,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ ok:false, error:"method_not_allowed" });
   }
 
-  if (!authorized(req)) {
+  if (!(await authorized(req))) {
     return res.status(401).json({ ok:false, error:"unauthorized" });
   }
 
