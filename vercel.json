@@ -45,10 +45,6 @@
     {
       "path": "/api/daily-top5",
       "schedule": "0 21 * * *"
-    },
-    {
-      "path": "/api/process-queue",
-      "schedule": "*/5 * * * *"
     }
   ]
 }
