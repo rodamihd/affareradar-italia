@@ -14,7 +14,7 @@ export default async function handler(req,res){
   if(req.method!=="GET") return res.status(405).json({ok:false,error:"method_not_allowed"});
   if(String(req.query?.token||"")!=="mps_7Qf9n4Zc2Lx8bK3p") return res.status(401).json({ok:false,error:"unauthorized"});
   if(!redisConfig()) return res.status(503).json({ok:false,error:"redis_required"});
-  const lock=await redisCommand("SET","affareradar:manual-priceless-batch:2026-10-11",new Date().toISOString(),"NX","EX",86400);
+  const lock=await redisCommand("SET","affareradar:manual-priceless-batch:2026-10-11-v2",new Date().toISOString(),"NX","EX",86400);
   if(lock.result!=="OK") return res.status(409).json({ok:false,error:"batch_already_executed"});
   const secret=process.env.PUBLISH_SECRET;
   const host=req.headers.host;
@@ -25,7 +25,7 @@ export default async function handler(req,res){
   for(const item of BATCH){
     const body={
       ...item,
-      dealType:"product_signal",
+      dealType:"deal",
       source:"manual_verified_amazon_page",
       sourceVerified:true,
       pricelessSignal:true,
