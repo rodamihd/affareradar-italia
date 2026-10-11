@@ -476,6 +476,12 @@ export default async function handler(req, res) {
   const editorial = transformExternalEditorial(rawBody);
   const publication = sanitizeForAmazonPublication(editorial.body, now);
   let body = publication.body;
+  const manualPricelessApproval =
+    body.pricelessSignal === true &&
+    body.commercialClaimsSuppressed === true &&
+    body.sourceVerified === true &&
+    body.humanApprovedPricelessSignal === true &&
+    Boolean(String(body.asin || "").trim());
   const outcomeProfile = await readOutcomeProfile(body);
   body = mergeLearnedSignals(body, outcomeProfile);
   const originality = evaluateOriginality(body);
@@ -564,7 +570,7 @@ export default async function handler(req, res) {
     });
   }
 
-  if (!scorePass && !reliabilityPass && !rewardPass) {
+  if (!scorePass && !reliabilityPass && !rewardPass && !manualPricelessApproval) {
     await trackMetric("rejected_below_threshold", body);
     return res.status(200).json({
       ok:true,
@@ -625,6 +631,12 @@ export default async function handler(req, res) {
   const window = publishingWindow(new Date(now));
   const verification = evaluateAmazonVerification(body, now);
   const sourceReputation = await readSourceReputation(body);
+  const manualPricelessGate = {
+    requested:manualPricelessApproval,
+    sourceReputationPass:Number(sourceReputation?.score || 0) >= 55 && sourceReputation?.status !== "DEGRADED",
+    sourceReputationScore:Number(sourceReputation?.score || 0),
+    sourceReputationStatus:sourceReputation?.status || null
+  };
   const policy = evaluatePolicies(body, {
     verification,
     publication,
@@ -680,7 +692,7 @@ export default async function handler(req, res) {
     verification
   });
 
-  const adaptiveControl = adaptiveControl33_10({
+  const adaptiveControlRaw = adaptiveControl33_10({
     mode,
     policy,
     egress,
@@ -691,6 +703,29 @@ export default async function handler(req, res) {
     timing,
     revenueAttribution
   });
+  const manualPricelessEligible =
+    manualPricelessGate.requested &&
+    manualPricelessGate.sourceReputationPass &&
+    policy.blocking.length === 0 &&
+    egress.passed === true &&
+    freshness.state === "FRESH" &&
+    publication.productEligibility?.passed !== false;
+  const adaptiveControl =
+    manualPricelessEligible &&
+    ["HOLD","DEFER","REVERIFY"].includes(adaptiveControlRaw.action)
+      ? {
+          ...adaptiveControlRaw,
+          action:"GO",
+          reason:"human_approved_priceless_signal",
+          autonomy:"SUPERVISED",
+          manualOverride:{
+            applied:true,
+            scope:"non_commercial_optimization_only",
+            originalAction:adaptiveControlRaw.action,
+            originalReason:adaptiveControlRaw.reason
+          }
+        }
+      : adaptiveControlRaw;
   const routing = agentOsRoutingDecision({ mode, policy, verification, opportunity });
 
   if (adaptiveControl.action === "BLOCK") {
@@ -815,7 +850,7 @@ export default async function handler(req, res) {
     });
   }
 
-  if (!isReward && opportunity.action === "VERIFY") {
+  if (!isReward && opportunity.action === "VERIFY" && !manualPricelessEligible) {
     const verificationQueue = await enqueueVerification(body, verifyPlan);
     await recordAgentOsEvent("AFFARERADAR_VERIFICATION_REQUESTED", body, {
       lifecycle:"PARSED",
@@ -845,7 +880,7 @@ export default async function handler(req, res) {
     });
   }
 
-  if (!isReward && (opportunity.action === "DISCARD" || opportunity.action === "OBSERVE")) {
+  if (!isReward && (opportunity.action === "DISCARD" || opportunity.action === "OBSERVE") && !manualPricelessEligible) {
     await trackMetric("opportunity_not_publishable", body, { policy, verification, sourceReputation, opportunity });
     return res.status(200).json({
       ok:true,
@@ -860,7 +895,7 @@ export default async function handler(req, res) {
     });
   }
 
-  if (!isReward && !creatorQuality.passed && dealType !== "price_error") {
+  if (!isReward && !creatorQuality.passed && dealType !== "price_error" && !manualPricelessEligible) {
     await trackMetric("rejected_creator_quality", body, { creatorQuality, window });
     return res.status(200).json({
       ok:true,
@@ -1069,6 +1104,8 @@ export default async function handler(req, res) {
     publicationCompliance:publication,
     verification,
     sourceReputation,
+    manualPricelessGate,
+    manualPricelessEligible,
     policy,
     opportunity,
     outcomeProfile,
@@ -1135,7 +1172,7 @@ export default async function handler(req, res) {
   return res.status(200).json({
     ok:true,
     published:true,
-    decision:rewardPass ? "amazon_reward_verified" : (scorePass ? "deal_score_threshold" : "high_reliability_special"),
+    decision:manualPricelessEligible ? "human_approved_priceless_signal" : (rewardPass ? "amazon_reward_verified" : (scorePass ? "deal_score_threshold" : "high_reliability_special")),
     telegram_message_id:publishData.telegram_message_id,
     badge:publishData.badge,
     lifecycle,
@@ -1165,6 +1202,8 @@ export default async function handler(req, res) {
     publicationCompliance:publishData.publicationCompliance || publication,
     verification,
     sourceReputation,
+    manualPricelessGate,
+    manualPricelessEligible,
     policy,
     opportunity,
     outcomeProfile,
