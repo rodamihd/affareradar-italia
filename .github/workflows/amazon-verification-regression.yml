@@ -1,6 +1,7 @@
 name: Amazon verification security regression
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - 'lib/amazon-verification-broker.js'
       - 'lib/amazon-verification-attestation.js'
