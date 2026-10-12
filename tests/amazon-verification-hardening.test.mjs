@@ -286,3 +286,15 @@ test("shadow projection never echoes arbitrary commercial source text", async ()
   assert.equal(r.gate,"HOLD");
   assert.equal(r.autoPublishAllowed,false);
 });
+
+test("discovery review projection cannot expose raw commercial fields", async () => {
+  const {projectPreApiDiscoveryForReview} = await import("../lib/preapi-discovery-projection.js");
+  const input={results:[{title:"90% coupon €1",dealScore:99,source:"unverified",
+    quarantine:{asinCandidate:"B0C5DVGTR9"},publish:{published:true},preApi:{published:true}}]};
+  const r=projectPreApiDiscoveryForReview(input,new Date("2026-10-12T10:00:00Z"));
+  assert.equal(r.decision,"HOLD");
+  assert.equal(r.publicationEnabled,false);
+  assert.equal(r.records.length,1);
+  assert.equal(r.records[0].reason,"unverified_product_identity");
+  assert.doesNotMatch(JSON.stringify(r),/90%|coupon €1|dealScore|unverified|published":true/);
+});
