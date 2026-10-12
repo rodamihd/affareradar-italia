@@ -1,6 +1,7 @@
 import { evaluateAgentAuthorization } from "../lib/agentos-governance-gate.js";
 import { verifyStoredApproval } from "../lib/agentos-approval-verifier.js";
 import { consumeRedisApproval } from "../lib/agentos-approval-redis-store.js";
+import { publicationRequestDigest } from "../lib/agentos-publication-binding.js";
 import { channelPlan } from "../lib/channel-strategy.js";
 import { evaluateStorefrontCandidate, storefrontContent } from "../lib/storefront-intelligence.js";
 import { creatorQualityScore, publishingWindow } from "../lib/creator-quality.js";
@@ -481,8 +482,11 @@ export default async function handler(req, res) {
     const operation = "PUBLISH_OFFER";
     const scope = "affareradar";
     const approvalId = String(req.headers["x-agentos-approval-id"] || "");
+    let publicationDigest;
+    try { publicationDigest=publicationRequestDigest(req.body); }
+    catch { return res.status(400).json({ok:false,published:false,error:"invalid_publication_body"}); }
     const proof = await verifyStoredApproval({
-      approvalId, principal, operation, scope, consume:consumeRedisApproval
+      approvalId, principal, operation, scope, publicationDigest, consume:consumeRedisApproval
     });
     const authorization = evaluateAgentAuthorization({
       principal, operation, scope, grantScope:scope,
