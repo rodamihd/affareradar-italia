@@ -5,6 +5,7 @@ on:
       - 'lib/amazon-verification-broker.js'
       - 'lib/amazon-verification-attestation.js'
       - 'api/discover-amazon.js'
+      - 'api/telegram.js'
       - 'tests/amazon-verification-hardening.test.mjs'
       - '.github/workflows/amazon-verification-regression.yml'
   workflow_dispatch:
