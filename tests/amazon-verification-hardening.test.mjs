@@ -91,3 +91,37 @@ test("Telegram special flows and unauthenticated production test are fail-closed
   assert.match(source, /special_publication_review_required/);
   assert.match(source, /amazon_attestation_required/);
 });
+
+test("Telegram handler rejects unauthenticated requests without network calls", async () => {
+  const { default: handler } = await import("../api/telegram.js");
+  const old = {
+    PUBLISH_SECRET:process.env.PUBLISH_SECRET,
+    NODE_ENV:process.env.NODE_ENV,
+    AFFARERADAR_TEST_MESSAGE_ENABLED:process.env.AFFARERADAR_TEST_MESSAGE_ENABLED
+  };
+  const originalFetch = globalThis.fetch;
+  let networkCalls = 0;
+  const invoke = async (method, headers = {}, query = {}) => {
+    const response = { statusCode:200, payload:null, status(code) { this.statusCode=code; return this; },
+      json(payload) { this.payload=payload; return this; } };
+    await handler({method,headers,query,body:{}},response);
+    return response;
+  };
+  try {
+    process.env.PUBLISH_SECRET="synthetic-only-test-secret";
+    process.env.NODE_ENV="production";
+    process.env.AFFARERADAR_TEST_MESSAGE_ENABLED="true";
+    globalThis.fetch = async () => { networkCalls++; throw new Error("network_must_not_be_called"); };
+    const testGet = await invoke("GET", {}, {systemTest:"1"});
+    assert.equal(testGet.statusCode,405);
+    const testPost = await invoke("POST");
+    assert.equal(testPost.statusCode,401);
+    assert.equal(networkCalls,0);
+  } finally {
+    globalThis.fetch=originalFetch;
+    for (const [key,value] of Object.entries(old)) {
+      if (value===undefined) delete process.env[key];
+      else process.env[key]=value;
+    }
+  }
+});
