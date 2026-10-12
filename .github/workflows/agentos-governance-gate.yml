@@ -40,4 +40,6 @@ jobs:
       - run: node lib/agentos-approval-redis-store-selftest.js
       - run: node lib/agentos-approval-issuer-selftest.js
       - run: node lib/agentos-approval-cycle-selftest.js
+      - run: sudo apt-get update -qq && sudo apt-get install -y redis-tools
+      - run: redis-cli -h 127.0.0.1 -p 6379 ping
       - run: node lib/agentos-approval-redis-integration-test.js
