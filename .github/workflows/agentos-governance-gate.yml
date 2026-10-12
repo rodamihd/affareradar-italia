@@ -8,6 +8,8 @@ on:
       - "lib/agentos-approval-verifier-selftest.js"
       - "lib/agentos-approval-redis-store.js"
       - "lib/agentos-approval-redis-store-selftest.js"
+      - "lib/agentos-staging-db-readiness.js"
+      - "lib/agentos-staging-db-readiness-selftest.js"
       - "lib/agentos-private-reviewer-grant-lookup.js"
       - "lib/agentos-private-reviewer-grant-lookup-selftest.js"
       - "lib/agentos-supabase-reviewer-composition.js"
@@ -59,3 +61,4 @@ jobs:
       - run: node lib/agentos-supabase-session-verifier-selftest.js
       - run: node lib/agentos-supabase-reviewer-composition-selftest.js
       - run: node lib/agentos-private-reviewer-grant-lookup-selftest.js
+      - run: node lib/agentos-staging-db-readiness-selftest.js
