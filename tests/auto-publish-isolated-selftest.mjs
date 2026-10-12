@@ -7,13 +7,54 @@ import vm from "node:vm";
 const source = fs.readFileSync(new URL("../api/auto-publish.js", import.meta.url), "utf8");
 const imports = [...source.matchAll(/import\s+([\s\S]*?)\s+from\s+["']([^"']+)["'];/g)];
 const forbidden = [];
+const validationCalls = [];
+let validatorModule;
+const stubs = {
+  startRuntimeObservation:() => ({}),
+  transformExternalEditorial:(body) => ({body}),
+  sanitizeForAmazonPublication:(body) => ({body}),
+  redisConfig:() => null,
+  redisCommand:async () => ({configured:false,result:null}),
+  learnedOutcomeProfile:() => ({}),
+  mergeLearnedSignals:(body) => body,
+  evaluateOriginality:() => ({passed:true}),
+  resolveSignalIntent:() => ({intent:"deal"}),
+  initialSourceReputation:() => ({score:90,status:"HEALTHY"}),
+  evaluateAmazonReward:() => ({isReward:false,eligible:false}),
+  evaluateTrafficSource:() => ({passed:true}),
+  evaluateRepetition:() => ({passed:true}),
+  creatorQualityScore:() => ({passed:true}),
+  publishingWindow:() => ({}),
+  evaluateAmazonVerification:() => ({state:"VERIFIED"}),
+  evaluatePolicies:() => ({blocking:[]}),
+  expectedRevenue:() => ({commissionPotentialScore:0}),
+  opportunityScoreV2:() => ({action:"PUBLISH"}),
+  predictOfferOutcome:() => ({}),
+  verificationPlan:() => ({}),
+  freshnessSla:() => ({state:"FRESH"}),
+  evaluateStockPricePersistence:() => ({}),
+  revenueAttributionProfile:() => ({}),
+  profitLearningDecision:() => ({}),
+  optimizePublishingTime:() => ({}),
+  knowledgeProposal:() => ({state:"PROPOSAL",proposalId:"synthetic",commitAllowed:false}),
+  releaseManifest:() => ({}),
+  semanticDecisionCachePolicy:() => ({}),
+  egressGuard:() => ({passed:true}),
+  systemMode:() => ({publishingAllowed:true}),
+  adaptiveControl33_10:() => ({action:"GO"}),
+  agentOsRoutingDecision:() => ({}),
+  evaluateRepublish:() => ({allowed:true})
+};
 const mock = (name) => {
-  if (name === "startRuntimeObservation") return () => ({});
-  if (name === "transformExternalEditorial") return (body) => ({body});
-  if (name === "sanitizeForAmazonPublication") return (body) => ({body});
-  if (name === "publicationRoute") return (body) =>
-    body.pricelessSignal === true || body.commercialClaimsSuppressed === true
-      ? "EDITORIAL_HUMAN_REVIEW" : "COMMERCIAL_STRICT";
+  if (name === "prePublishValidate") return (...args) => {
+    const outcome = validatorModule.namespace.prePublishValidate(...args);
+    validationCalls.push(outcome);
+    return outcome;
+  };
+  if (name === "publicationRoute" || name === "rewardPrePublishValidate") {
+    return validatorModule.namespace[name];
+  }
+  if (Object.hasOwn(stubs,name)) return stubs[name];
   return () => { throw new Error("Unexpected dependency call: " + name); };
 };
 const context = vm.createContext({
@@ -26,6 +67,13 @@ const context = vm.createContext({
   fetch:async (...args) => { forbidden.push(args); throw Error("Network forbidden"); },
   globalThis:{}
 });
+// Load the real validator and routing functions; mock only non-gate dependencies.
+validatorModule = new vm.SourceTextModule(
+  fs.readFileSync(new URL("../lib/pre-publish-validator.js", import.meta.url), "utf8"),
+  {context,identifier:"lib/pre-publish-validator.js"}
+);
+await validatorModule.link(() => { throw new Error("Unexpected validator import"); });
+await validatorModule.evaluate();
 const module = new vm.SourceTextModule(source,{context,identifier:"api/auto-publish.js"});
 const caches = new Map();
 await module.link(async (specifier) => {
@@ -71,5 +119,35 @@ for (const fixture of [
   assert.equal(result.data.decision,"review_required");
   assert.equal(result.data.reason,"editorial_human_review_required");
 }
+// Exercise the actual commercial handler path with the actual strict validator.
+// Simulated upstream services are permissive so only the strict gate can reject.
+const commercialBase = {
+  asin:"B012345678",
+  amazonUrl:"https://www.amazon.it/dp/B012345678",
+  source:"external_signal",
+  price:"24.99",
+  dealScore:99,
+  reliabilityScore:96,
+  stock:true,
+  lastVerifiedAt:new Date().toISOString(),
+  sourceVerified:true,
+  priceVerifiedByAmazon:false
+};
+for (const [fixture,expectedBlock] of [
+  [commercialBase,"MISSING_PRICE_VERIFICATION"],
+  [{...commercialBase,priceVerified:false},"PRICE_NOT_VERIFIED"],
+  [{...commercialBase,priceVerified:true,lastVerifiedAt:new Date(Date.now()-11*60*1000).toISOString()},"STALE_VERIFICATION"],
+  [{...commercialBase,priceVerified:true,lastVerifiedAt:null},"MISSING_VERIFICATION_TIMESTAMP"],
+  [{...commercialBase,priceVerified:true,coupon:"10%"},"MISSING_COUPON_VERIFICATION"]
+]) {
+  const observed = await invoke(fixture);
+  assert.equal(observed.status,200);
+  assert.equal(observed.data.published,false);
+  assert.equal(observed.data.reason,"revalidation_failed");
+  assert.equal(observed.data.revalidation.mode,"strict");
+  assert.ok(observed.data.revalidation.blockingCodes.includes(expectedBlock),expectedBlock);
+  assert.equal(forbidden.length,0,"No external network or Telegram request is permitted on failure");
+}
+assert.equal(validationCalls.length,5,"Commercial cases must actually reach the strict validator");
 assert.deepEqual(forbidden,[]);
-console.log("isolated auto-publish endpoint guard test passed");
+console.log("isolated auto-publish endpoint guard and commercial rejection tests passed");
