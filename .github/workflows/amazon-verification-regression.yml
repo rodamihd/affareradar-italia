@@ -1,0 +1,30 @@
+name: Amazon verification security regression
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - 'lib/amazon-verification-broker.js'
+      - 'lib/amazon-verification-attestation.js'
+      - 'api/discover-amazon.js'
+      - 'api/telegram.js'
+      - 'api/discover-multisource.js'
+      - 'lib/preapi-shadow-review.js'
+      - 'lib/preapi-shadow-queue.js'
+      - 'lib/preapi-discovery-projection.js'
+      - 'tests/amazon-verification-hardening.test.mjs'
+      - '.github/workflows/amazon-verification-regression.yml'
+  push:
+    branches:
+      - 'audit/price-verification-hardening-20261012'
+  workflow_dispatch:
+jobs:
+  security-regression:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: node --test tests/amazon-verification-hardening.test.mjs
