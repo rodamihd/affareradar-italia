@@ -161,3 +161,28 @@ test("Telegram rejects spoofed Amazon claims and special signals before network"
     }
   }
 });
+
+test("Telegram rejects synthetic reward publication before network", async () => {
+  const { default: handler } = await import("../api/telegram.js");
+  const keys=["PUBLISH_SECRET","TELEGRAM_BOT_TOKEN","TELEGRAM_CHANNEL_ID"];
+  const old=Object.fromEntries(keys.map(k=>[k,process.env[k]]));
+  const originalFetch=globalThis.fetch;
+  let calls=0;
+  try {
+    process.env.PUBLISH_SECRET="test-publish-secret";
+    process.env.TELEGRAM_BOT_TOKEN="test-bot-token";
+    process.env.TELEGRAM_CHANNEL_ID="@synthetic";
+    globalThis.fetch=async()=>{calls++;throw Error("forbidden-network");};
+    const res={statusCode:200,status(v){this.statusCode=v;return this;},json(v){this.payload=v;return this;}};
+    await handler({method:"POST",headers:{"x-affareradar-secret":"test-publish-secret"},body:{
+      title:"Synthetic program",amazonUrl:"https://www.amazon.it/dp/B0C5DVGTR9",
+      asin:"B0C5DVGTR9",rewardProgram:"prime",program:"prime"
+    }},res);
+    assert.equal(res.statusCode,422);
+    assert.equal(res.payload.error,"special_publication_review_required");
+    assert.equal(calls,0);
+  } finally {
+    globalThis.fetch=originalFetch;
+    for(const [k,v] of Object.entries(old)){if(v===undefined)delete process.env[k];else process.env[k]=v;}
+  }
+});
