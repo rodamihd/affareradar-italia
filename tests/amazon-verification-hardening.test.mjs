@@ -233,3 +233,26 @@ test("displayed price and effective price each invalidate signature when changed
     assert.notEqual(evaluateAmazonVerification(changed,now).state,"VERIFIED");
   }
 });
+
+test("PREAPI shadow review strips commercial claims and always holds", async () => {
+  const {buildShadowReview} = await import("../lib/preapi-shadow-review.js");
+  const r=buildShadowReview({asin:"B0C5DVGTR9",market:"IT",
+    amazonUrl:"https://www.amazon.it/dp/B0C5DVGTR9?tag=example-21",
+    title:"SUPER SCONTO 90% coupon €29 Offerta imperdibile",source:"external_feed"},
+    new Date("2026-10-12T10:00:00Z"));
+  assert.equal(r.gate,"HOLD");
+  assert.equal(r.mode,"SHADOW_ONLY");
+  assert.equal(r.autoPublishAllowed,false);
+  assert.equal(r.claims.currentPriceVerified,false);
+  assert.equal(r.productUrl,"https://www.amazon.it/dp/B0C5DVGTR9");
+  assert.doesNotMatch(r.title,/90%|coupon|€29|sconto|imperdibile/i);
+});
+test("PREAPI shadow review rejects identity mismatch and unsupported market", async () => {
+  const {buildShadowReview} = await import("../lib/preapi-shadow-review.js");
+  const mismatch=buildShadowReview({asin:"B0C5DVGTR9",amazonUrl:"https://www.amazon.it/dp/B012345678"});
+  assert.equal(mismatch.productUrl,null);
+  assert.equal(mismatch.reason,"unverified_product_identity");
+  const bad=buildShadowReview({asin:"B0C5DVGTR9",amazonUrl:"https://www.amazon.it/dp/B0C5DVGTR9",market:"US"});
+  assert.equal(bad.reason,"unsupported_market");
+  assert.equal(bad.autoPublishAllowed,false);
+});
