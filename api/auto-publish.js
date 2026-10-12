@@ -585,7 +585,7 @@ export default async function handler(req, res) {
 
   const revalidation = isReward
     ? rewardPrePublishValidate(body, now)
-    : prePublishValidate(body, now);
+    : prePublishValidate(body, now, { mode:"strict", maxAgeMinutes:10 });
   const dealId = buildDealId(body);
 
   const trafficSource = evaluateTrafficSource("telegram");
