@@ -1,5 +1,6 @@
 import { attestAmazonApiResult } from "../lib/amazon-verification-attestation.js";
 import test from "node:test";
+import { readFileSync } from "node:fs";
 import assert from "node:assert/strict";
 import { evaluateAmazonVerification } from "../lib/amazon-verification-broker.js";
 
@@ -68,4 +69,25 @@ test("recognize Italian localized prices", () => {
   const body = { ...sample, price:"€ 1.299,50" };
   body.amazonVerificationAttestation = attestAmazonApiResult(body);
   assert.equal(evaluateAmazonVerification(body, now).hasPositivePrice, true);
+});
+
+// Static boundary tests: verify the route returns before any PREAPI side effects.
+test("PREAPI entry is fail-closed ahead of Redis and Telegram calls", () => {
+  const source = readFileSync(new URL("../api/discover-multisource.js", import.meta.url), "utf8");
+  const start = source.indexOf("async function submitPreApi(req, deal) {");
+  assert.ok(start >= 0);
+  const end = source.indexOf("\nasync function ", start + 10);
+  const fn = source.slice(start, end > start ? end : undefined);
+  const gate = fn.indexOf('reason:"preapi_unattested_publication_disabled"');
+  const redis = fn.indexOf('redisCommand(');
+  const telegram = fn.indexOf('/api/telegram');
+  assert.ok(gate > 0 && redis > gate && telegram > gate);
+  assert.match(fn.slice(0, gate + 65), /return\s*\{/);
+});
+test("Telegram special flows and unauthenticated production test are fail-closed", () => {
+  const source = readFileSync(new URL("../api/telegram.js", import.meta.url), "utf8");
+  assert.match(source, /process\.env\.NODE_ENV !== "production"/);
+  assert.match(source, /req\.headers\["x-affareradar-secret"\] === process\.env\.PUBLISH_SECRET/);
+  assert.match(source, /special_publication_review_required/);
+  assert.match(source, /amazon_attestation_required/);
 });
