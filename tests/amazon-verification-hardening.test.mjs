@@ -267,3 +267,12 @@ test("shadow queue is nonpublishable, bounded and deduplicates product URLs", as
   assert.equal(q.records[0].autoPublishAllowed,false);
   assert.equal(Object.hasOwn(q.records[0],"price"),false);
 });
+
+test("shadow queue with zero limit emits no records", async () => {
+  const {buildShadowReviewQueue} = await import("../lib/preapi-shadow-queue.js");
+  const signal={asin:"B0C5DVGTR9",amazonUrl:"https://www.amazon.it/dp/B0C5DVGTR9"};
+  const q=buildShadowReviewQueue([signal],new Date("2026-10-12T10:00:00Z"),0);
+  assert.deepEqual(q.records,[]);
+  assert.equal(q.decision,"HOLD");
+  assert.equal(q.publicationEnabled,false);
+});
