@@ -722,6 +722,15 @@ async function submitPreApi(req, deal) {
     reliabilityScore:deal.reliabilityScore ?? null
   };
 
+  // The final Telegram egress currently requires trusted API attestation.
+  // Do not acquire publication slots or call Telegram for unverified PREAPI signals.
+  return {
+    attempted:false,
+    ok:true,
+    status:200,
+    data:{ published:false, decision:"held", reason:"preapi_unattested_publication_disabled" }
+  };
+
   const eligibility = evaluateProductEligibility(candidate);
   if (!eligibility.passed) {
     return { attempted:true, ok:true, status:200, data:{ published:false, decision:"rejected", reason:"product_not_eligible", productEligibility:eligibility } };
