@@ -125,3 +125,39 @@ test("Telegram handler rejects unauthenticated requests without network calls", 
     }
   }
 });
+
+test("Telegram rejects spoofed Amazon claims and special signals before network", async () => {
+  const { default: handler } = await import("../api/telegram.js");
+  const envKeys = ["PUBLISH_SECRET","TELEGRAM_BOT_TOKEN","TELEGRAM_CHANNEL_ID","AMAZON_VERIFICATION_ATTESTATION_SECRET"];
+  const previous = Object.fromEntries(envKeys.map(k => [k,process.env[k]]));
+  const originalFetch = globalThis.fetch;
+  let networkCalls = 0;
+  try {
+    process.env.PUBLISH_SECRET="synthetic-publisher-key";
+    process.env.TELEGRAM_BOT_TOKEN="synthetic-telegram-token";
+    process.env.TELEGRAM_CHANNEL_ID="@synthetic_testing_only";
+    delete process.env.AMAZON_VERIFICATION_ATTESTATION_SECRET;
+    globalThis.fetch=async () => { networkCalls++; throw new Error("forbidden_network"); };
+    async function invoke(body) {
+      const res = { statusCode:200,status(code){this.statusCode=code;return this;},
+        json(data){this.payload=data;return this;} };
+      await handler({method:"POST",headers:{"x-affareradar-secret":process.env.PUBLISH_SECRET},body},res);
+      return res;
+    }
+    const base={title:"Synthetic Test",amazonUrl:"https://www.amazon.it/dp/B0C5DVGTR9",
+      asin:"B0C5DVGTR9",amazonDataSource:"creators_api",priceVerifiedByAmazon:true,
+      price:"26.10",oldPrice:"35.00",discount:"25%",lastVerifiedAt:new Date().toISOString()};
+    const forged=await invoke(base);
+    assert.equal(forged.statusCode,422);
+    const priceless=await invoke({...base,price:null,oldPrice:null,discount:null,
+      pricelessSignal:true,sourceVerified:true,commercialClaimsSuppressed:true});
+    assert.equal(priceless.statusCode,422);
+    assert.equal(priceless.payload.error,"special_publication_review_required");
+    assert.equal(networkCalls,0);
+  } finally {
+    globalThis.fetch=originalFetch;
+    for (const [k,v] of Object.entries(previous)) {
+      if (v===undefined) delete process.env[k]; else process.env[k]=v;
+    }
+  }
+});
