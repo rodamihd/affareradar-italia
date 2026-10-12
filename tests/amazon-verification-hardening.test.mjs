@@ -1,3 +1,4 @@
+import { attestAmazonApiResult } from "../lib/amazon-verification-attestation.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { evaluateAmazonVerification } from "../lib/amazon-verification-broker.js";
@@ -11,7 +12,9 @@ const sample = {
   lastVerifiedAt: "2026-10-12T11:59:00Z"
 };
 function decision(overrides = {}) {
-  return evaluateAmazonVerification({ ...sample, ...overrides }, now);
+  const body = { ...sample, ...overrides };
+  if (overrides.amazonDataSource === undefined && overrides.priceVerifiedByAmazon !== false) body.amazonVerificationAttestation = attestAmazonApiResult(body);
+  return evaluateAmazonVerification(body, now);
 }
 
 test("fresh API-labeled product has matching ASIN and positive price", () => {
@@ -43,7 +46,7 @@ test("reject non-Amazon HTTPS link and mismatching link", () => {
     assert.notEqual(decision({ amazonUrl }).state, "VERIFIED");
   }
 });
-test("reject a self-declared official source without trusted server-side attestation (EXPECTED TO FAIL UNTIL FIXED)", () => {
+test("reject a self-declared official source without trusted server-side attestation", () => {
   // This is an intentional red test documenting the remaining trust-boundary defect.
   assert.notEqual(decision({ amazonDataSource: "creators_api", priceVerifiedByAmazon: false }).state, "VERIFIED");
 });
