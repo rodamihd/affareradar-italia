@@ -10,6 +10,7 @@ on:
       - "lib/agentos-approval-redis-store-selftest.js"
       - "lib/agentos-approval-issuer.js"
       - "lib/agentos-approval-issuer-selftest.js"
+      - "lib/agentos-approval-cycle-selftest.js"
       - ".github/workflows/agentos-governance-gate.yml"
   workflow_dispatch:
 jobs:
@@ -25,3 +26,4 @@ jobs:
       - run: node lib/agentos-approval-verifier-selftest.js
       - run: node lib/agentos-approval-redis-store-selftest.js
       - run: node lib/agentos-approval-issuer-selftest.js
+      - run: node lib/agentos-approval-cycle-selftest.js
