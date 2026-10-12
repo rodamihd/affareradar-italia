@@ -12,6 +12,7 @@ on:
       - "lib/agentos-approval-issuer-selftest.js"
       - "lib/agentos-approval-cycle-selftest.js"
       - "lib/agentos-approval-redis-integration-test.js"
+      - "lib/agentos-auto-publish-http-rejection-selftest.js"
       - "api/auto-publish.js"
       - ".github/workflows/agentos-governance-gate.yml"
   workflow_dispatch:
@@ -44,3 +45,4 @@ jobs:
       - run: sudo apt-get update -qq && sudo apt-get install -y redis-tools
       - run: redis-cli -h 127.0.0.1 -p 6379 ping
       - run: node lib/agentos-approval-redis-integration-test.js
+      - run: node lib/agentos-auto-publish-http-rejection-selftest.js
