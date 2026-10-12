@@ -35,6 +35,7 @@ jobs:
           node-version: "20"
       - run: node --check lib/agentos-governance-gate.js
       - run: node --check api/auto-publish.js
+      - run: node --input-type=module -e 'import fs from "node:fs"; import assert from "node:assert/strict"; const s=fs.readFileSync("api/auto-publish.js","utf8"); const auth=s.indexOf("auth !== secret"); const gate=s.indexOf("AGENTOS_GOVERNANCE_ENFORCE"); assert.ok(auth>0 && gate>auth, "publisher authentication must precede governance");'
       - run: node lib/agentos-governance-gate-selftest.js
       - run: node lib/agentos-approval-verifier-selftest.js
       - run: node lib/agentos-approval-redis-store-selftest.js
