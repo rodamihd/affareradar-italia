@@ -36,7 +36,7 @@ import { classifyDecisionEvent, recordDecisionEvent, recordPublicationOutcome } 
 import { enqueueQuantoItaliaDistribution } from "../lib/distribution-engine.js";
 import { normalizeOpportunity } from "../lib/universal-opportunity.js";
 import { evaluateOpportunityEconomics } from "../lib/convenience-engine.js";
-import { prePublishValidate, rewardPrePublishValidate } from "../lib/pre-publish-validator.js";
+import { prePublishValidate, rewardPrePublishValidate, publicationRoute } from "../lib/pre-publish-validator.js";
 
 const memory = globalThis.__affareRadarState || {
   published:new Map(),
@@ -476,6 +476,16 @@ export default async function handler(req, res) {
   const editorial = transformExternalEditorial(rawBody);
   const publication = sanitizeForAmazonPublication(editorial.body, now);
   let body = publication.body;
+  // Untrusted payload approval flags are not sufficient to authorize an editorial publication.
+  if (publicationRoute(body) === "EDITORIAL_HUMAN_REVIEW") {
+    return res.status(200).json({
+      ok:true,
+      published:false,
+      decision:"review_required",
+      reason:"editorial_human_review_required",
+      lifecycle:"REVIEW"
+    });
+  }
   const manualPricelessApproval =
     body.pricelessSignal === true &&
     body.commercialClaimsSuppressed === true &&
