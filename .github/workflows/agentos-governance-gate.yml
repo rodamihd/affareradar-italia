@@ -8,6 +8,10 @@ on:
       - "lib/agentos-approval-verifier-selftest.js"
       - "lib/agentos-approval-redis-store.js"
       - "lib/agentos-approval-redis-store-selftest.js"
+      - "lib/agentos-supabase-reviewer-composition.js"
+      - "lib/agentos-supabase-reviewer-composition-selftest.js"
+      - "lib/agentos-supabase-session-verifier.js"
+      - "lib/agentos-supabase-session-verifier-selftest.js"
       - "lib/agentos-trusted-reviewer-adapter.js"
       - "lib/agentos-trusted-reviewer-adapter-selftest.js"
       - "lib/agentos-publication-binding.js"
@@ -51,3 +55,4 @@ jobs:
       - run: node lib/agentos-auto-publish-http-rejection-selftest.js
       - run: node lib/agentos-trusted-reviewer-adapter-selftest.js
       - run: node lib/agentos-supabase-session-verifier-selftest.js
+      - run: node lib/agentos-supabase-reviewer-composition-selftest.js
