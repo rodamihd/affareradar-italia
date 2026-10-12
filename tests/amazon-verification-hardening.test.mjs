@@ -186,3 +186,12 @@ test("Telegram rejects synthetic reward publication before network", async () =>
     for(const [k,v] of Object.entries(old)){if(v===undefined)delete process.env[k];else process.env[k]=v;}
   }
 });
+
+test("reference prices and promotional claims are bound to attestation", () => {
+  for(const changes of [{oldPrice:"99.99"},{discount:"-50%"},{coupon:"COUPON10"},{stack:"bonus"},{historicalLow:true}]){
+    const deal={...sample,oldPrice:"35.00",discount:"20%",coupon:"",stack:"",historicalLow:false};
+    deal.amazonVerificationAttestation=attestAmazonApiResult(deal);
+    Object.assign(deal,changes);
+    assert.notEqual(evaluateAmazonVerification(deal,now).state,"VERIFIED");
+  }
+});
