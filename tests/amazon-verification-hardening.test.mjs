@@ -256,3 +256,14 @@ test("PREAPI shadow review rejects identity mismatch and unsupported market", as
   assert.equal(bad.reason,"unsupported_market");
   assert.equal(bad.autoPublishAllowed,false);
 });
+
+test("shadow queue is nonpublishable, bounded and deduplicates product URLs", async () => {
+  const {buildShadowReviewQueue} = await import("../lib/preapi-shadow-queue.js");
+  const signal={asin:"B0C5DVGTR9",market:"IT",amazonUrl:"https://www.amazon.it/dp/B0C5DVGTR9",title:"Product"};
+  const q=buildShadowReviewQueue([signal,signal],new Date("2026-10-12T10:00:00Z"));
+  assert.equal(q.mode,"SHADOW_ONLY");
+  assert.equal(q.publicationEnabled,false);
+  assert.equal(q.records.length,1);
+  assert.equal(q.records[0].autoPublishAllowed,false);
+  assert.equal(Object.hasOwn(q.records[0],"price"),false);
+});
