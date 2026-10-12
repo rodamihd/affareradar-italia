@@ -1,4 +1,6 @@
 import { evaluateAgentAuthorization } from "../lib/agentos-governance-gate.js";
+import { verifyStoredApproval } from "../lib/agentos-approval-verifier.js";
+import { consumeRedisApproval } from "../lib/agentos-approval-redis-store.js";
 import { channelPlan } from "../lib/channel-strategy.js";
 import { evaluateStorefrontCandidate, storefrontContent } from "../lib/storefront-intelligence.js";
 import { creatorQualityScore, publishingWindow } from "../lib/creator-quality.js";
@@ -467,25 +469,31 @@ export default async function handler(req, res) {
   }
 
   const secret = process.env.PUBLISH_SECRET;
-  const auth = req.headers["x-affareradar-secret"];
-  if (!secret || auth !== secret) {
-    return res.status(401).json({ ok:false, error:"unauthorized" });
-  }
-
-  // Optional strict gate; disabled until a server-side approval verifier exists.
-  // When enabled, no request-body field can assert human authorization.
+  const  // Opt-in governance enforcement. Approval ID is only a lookup key: a caller
+  // cannot grant itself permission or human approval by sending request data.
   if (process.env.AGENTOS_GOVERNANCE_ENFORCE === "true") {
+    const principal = "affareradar-auto-publish";
+    const operation = "PUBLISH_OFFER";
+    const scope = "affareradar";
+    const approvalId = String(req.headers["x-agentos-approval-id"] || "");
+    const proof = await verifyStoredApproval({
+      approvalId, principal, operation, scope, consume:consumeRedisApproval
+    });
     const authorization = evaluateAgentAuthorization({
-      principal: "affareradar-auto-publish",
-      operation: "PUBLISH_OFFER",
-      scope: "affareradar",
-      grantScope: "affareradar",
-      grantedPermissions: ["PUBLISH_OFFER"],
-      trustedApproval: false
+      principal, operation, scope, grantScope:scope,
+      grantedPermissions:["PUBLISH_OFFER"],
+      trustedApproval:proof.verified === true
     });
     if (authorization.decision !== "ALLOW") {
       return res.status(403).json({
         ok:false, published:false, error:"governance_approval_required",
+        governance:{decision:authorization.decision,reason:authorization.reason,
+          approvalReason:proof.reason}
+      });
+    }
+  }
+
+blished:false, error:"governance_approval_required",
         governance:{decision:authorization.decision,reason:authorization.reason}
       });
     }
