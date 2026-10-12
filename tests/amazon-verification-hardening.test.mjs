@@ -210,3 +210,16 @@ test("verification merge must preserve signed API facts over conflicting externa
   merged.oldPrice=external.oldPrice;
   assert.notEqual(evaluateAmazonVerification(merged,now).state,"VERIFIED");
 });
+
+test("sanitization preserves trusted Amazon attestation and signed values", async () => {
+  const { sanitizeForAmazonPublication } = await import("../lib/amazon-compliance.js");
+  const verified = {...sample,oldPrice:"35.00",discount:"20%",priceVerifiedByAmazon:true,
+    promotionVerifiedByAmazon:true,couponVerifiedByAmazon:true,coupon:"SAVE5",stack:null,
+    historicalLow:false};
+  verified.amazonVerificationAttestation=attestAmazonApiResult(verified);
+  const output=sanitizeForAmazonPublication(verified,now);
+  assert.equal(output.body.price,verified.price);
+  assert.equal(output.body.oldPrice,verified.oldPrice);
+  assert.equal(output.body.coupon,verified.coupon);
+  assert.equal(evaluateAmazonVerification(output.body,now).state,"VERIFIED");
+});
