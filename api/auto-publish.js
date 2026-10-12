@@ -1,3 +1,4 @@
+import { evaluateAgentAuthorization } from "../lib/agentos-governance-gate.js";
 import { channelPlan } from "../lib/channel-strategy.js";
 import { evaluateStorefrontCandidate, storefrontContent } from "../lib/storefront-intelligence.js";
 import { creatorQualityScore, publishingWindow } from "../lib/creator-quality.js";
@@ -469,6 +470,25 @@ export default async function handler(req, res) {
   const auth = req.headers["x-affareradar-secret"];
   if (!secret || auth !== secret) {
     return res.status(401).json({ ok:false, error:"unauthorized" });
+  }
+
+  // Optional strict gate; disabled until a server-side approval verifier exists.
+  // When enabled, no request-body field can assert human authorization.
+  if (process.env.AGENTOS_GOVERNANCE_ENFORCE === "true") {
+    const authorization = evaluateAgentAuthorization({
+      principal: "affareradar-auto-publish",
+      operation: "PUBLISH_OFFER",
+      scope: "affareradar",
+      grantScope: "affareradar",
+      grantedPermissions: ["PUBLISH_OFFER"],
+      trustedApproval: false
+    });
+    if (authorization.decision !== "ALLOW") {
+      return res.status(403).json({
+        ok:false, published:false, error:"governance_approval_required",
+        governance:{decision:authorization.decision,reason:authorization.reason}
+      });
+    }
   }
 
   const now = Date.now();
