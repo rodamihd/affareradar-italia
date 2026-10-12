@@ -493,11 +493,6 @@ export default async function handler(req, res) {
     }
   }
 
-blished:false, error:"governance_approval_required",
-        governance:{decision:authorization.decision,reason:authorization.reason}
-      });
-    }
-  }
 
   const now = Date.now();
   const rawBody = req.body || {};
