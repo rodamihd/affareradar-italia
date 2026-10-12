@@ -1,3 +1,7 @@
+import { evaluateAgentAuthorization } from "../lib/agentos-governance-gate.js";
+import { verifyStoredApproval } from "../lib/agentos-approval-verifier.js";
+import { consumeRedisApproval } from "../lib/agentos-approval-redis-store.js";
+import { publicationRequestDigest } from "../lib/agentos-publication-binding.js";
 import { channelPlan } from "../lib/channel-strategy.js";
 import { evaluateStorefrontCandidate, storefrontContent } from "../lib/storefront-intelligence.js";
 import { creatorQualityScore, publishingWindow } from "../lib/creator-quality.js";
@@ -470,6 +474,34 @@ export default async function handler(req, res) {
   if (!secret || auth !== secret) {
     return res.status(401).json({ ok:false, error:"unauthorized" });
   }
+
+  // Opt-in governance enforcement. Approval ID is only a lookup key: a caller
+  // cannot grant itself permission or human approval by sending request data.
+  if (process.env.AGENTOS_GOVERNANCE_ENFORCE === "true") {
+    const principal = "affareradar-auto-publish";
+    const operation = "PUBLISH_OFFER";
+    const scope = "affareradar";
+    const approvalId = String(req.headers["x-agentos-approval-id"] || "");
+    let publicationDigest;
+    try { publicationDigest=publicationRequestDigest(req.body); }
+    catch { return res.status(400).json({ok:false,published:false,error:"invalid_publication_body"}); }
+    const proof = await verifyStoredApproval({
+      approvalId, principal, operation, scope, publicationDigest, consume:consumeRedisApproval
+    });
+    const authorization = evaluateAgentAuthorization({
+      principal, operation, scope, grantScope:scope,
+      grantedPermissions:["PUBLISH_OFFER"],
+      trustedApproval:proof.verified === true
+    });
+    if (authorization.decision !== "ALLOW") {
+      return res.status(403).json({
+        ok:false, published:false, error:"governance_approval_required",
+        governance:{decision:authorization.decision,reason:authorization.reason,
+          approvalReason:proof.reason}
+      });
+    }
+  }
+
 
   const now = Date.now();
   const rawBody = req.body || {};
