@@ -51,3 +51,21 @@ test("reject a self-declared official source without trusted server-side attesta
   // This is an intentional red test documenting the remaining trust-boundary defect.
   assert.notEqual(decision({ amazonDataSource: "creators_api", priceVerifiedByAmazon: false }).state, "VERIFIED");
 });
+
+test("reject tampering after attestation", () => {
+  const body = { ...sample };
+  body.amazonVerificationAttestation = attestAmazonApiResult(body);
+  body.price = 1;
+  assert.notEqual(evaluateAmazonVerification(body, now).state, "VERIFIED");
+});
+test("reject missing HMAC key", () => {
+  const original = process.env.AMAZON_VERIFICATION_ATTESTATION_SECRET;
+  delete process.env.AMAZON_VERIFICATION_ATTESTATION_SECRET;
+  try { assert.notEqual(decision().state, "VERIFIED"); }
+  finally { process.env.AMAZON_VERIFICATION_ATTESTATION_SECRET = original; }
+});
+test("recognize Italian localized prices", () => {
+  const body = { ...sample, price:"€ 1.299,50" };
+  body.amazonVerificationAttestation = attestAmazonApiResult(body);
+  assert.equal(evaluateAmazonVerification(body, now).hasPositivePrice, true);
+});
