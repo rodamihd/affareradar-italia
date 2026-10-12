@@ -469,7 +469,12 @@ export default async function handler(req, res) {
   }
 
   const secret = process.env.PUBLISH_SECRET;
-  const  // Opt-in governance enforcement. Approval ID is only a lookup key: a caller
+  const auth = req.headers["x-affareradar-secret"];
+  if (!secret || auth !== secret) {
+    return res.status(401).json({ ok:false, error:"unauthorized" });
+  }
+
+  // Opt-in governance enforcement. Approval ID is only a lookup key: a caller
   // cannot grant itself permission or human approval by sending request data.
   if (process.env.AGENTOS_GOVERNANCE_ENFORCE === "true") {
     const principal = "affareradar-auto-publish";
