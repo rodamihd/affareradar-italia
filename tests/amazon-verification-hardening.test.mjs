@@ -296,5 +296,5 @@ test("discovery review projection cannot expose raw commercial fields", async ()
   assert.equal(r.publicationEnabled,false);
   assert.equal(r.records.length,1);
   assert.equal(r.records[0].reason,"unverified_product_identity");
-  assert.doesNotMatch(JSON.stringify(r),/90%|coupon €1|dealScore|unverified|published":true/);
+  assert.doesNotMatch(JSON.stringify(r),/90%|coupon €1|dealScore|"source":"unverified"|published":true/);
 });
