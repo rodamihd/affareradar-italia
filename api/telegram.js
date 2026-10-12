@@ -80,6 +80,16 @@ export default async function handler(req, res) {
     Boolean(asin) &&
     body.commercialClaimsSuppressed === true;
 
+  // Fail closed until reward and priceless flows have separate trusted approval evidence.
+  // Caller-supplied approval booleans are not sufficient at the final egress.
+  if (isReward || pricelessSignal || body.pricelessSignal === true) {
+    return res.status(422).json({
+      ok:false,
+      error:"special_publication_review_required",
+      kind:isReward ? "reward" : "priceless_signal"
+    });
+  }
+
   if (!isReward && !pricelessSignal && !evaluateAmazonVerification(body, Date.now()).publishableCommercialData) {
     return res.status(422).json({ ok:false, error:"amazon_attestation_required" });
   }
