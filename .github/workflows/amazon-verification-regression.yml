@@ -9,6 +9,9 @@ on:
       - 'api/telegram.js'
       - 'tests/amazon-verification-hardening.test.mjs'
       - '.github/workflows/amazon-verification-regression.yml'
+  push:
+    branches:
+      - 'audit/price-verification-hardening-20261012'
   workflow_dispatch:
 jobs:
   security-regression:
