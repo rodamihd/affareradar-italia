@@ -11,6 +11,7 @@ on:
       - "lib/agentos-approval-issuer.js"
       - "lib/agentos-approval-issuer-selftest.js"
       - "lib/agentos-approval-cycle-selftest.js"
+      - "api/auto-publish.js"
       - ".github/workflows/agentos-governance-gate.yml"
   workflow_dispatch:
 jobs:
@@ -22,6 +23,7 @@ jobs:
         with:
           node-version: "20"
       - run: node --check lib/agentos-governance-gate.js
+      - run: node --check api/auto-publish.js
       - run: node lib/agentos-governance-gate-selftest.js
       - run: node lib/agentos-approval-verifier-selftest.js
       - run: node lib/agentos-approval-redis-store-selftest.js
