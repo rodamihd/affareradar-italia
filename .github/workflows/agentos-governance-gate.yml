@@ -1,0 +1,18 @@
+name: AgentOS Governance Gate Tests
+on:
+  pull_request:
+    paths:
+      - "lib/agentos-governance-gate.js"
+      - "lib/agentos-governance-gate-selftest.js"
+      - ".github/workflows/agentos-governance-gate.yml"
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: node --check lib/agentos-governance-gate.js
+      - run: node lib/agentos-governance-gate-selftest.js
