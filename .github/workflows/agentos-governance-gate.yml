@@ -8,6 +8,8 @@ on:
       - "lib/agentos-approval-verifier-selftest.js"
       - "lib/agentos-approval-redis-store.js"
       - "lib/agentos-approval-redis-store-selftest.js"
+      - "lib/agentos-trusted-reviewer-adapter.js"
+      - "lib/agentos-trusted-reviewer-adapter-selftest.js"
       - "lib/agentos-publication-binding.js"
       - "lib/agentos-approval-issuer.js"
       - "lib/agentos-approval-issuer-selftest.js"
@@ -47,3 +49,4 @@ jobs:
       - run: redis-cli -h 127.0.0.1 -p 6379 ping
       - run: node lib/agentos-approval-redis-integration-test.js
       - run: node lib/agentos-auto-publish-http-rejection-selftest.js
+      - run: node lib/agentos-trusted-reviewer-adapter-selftest.js
