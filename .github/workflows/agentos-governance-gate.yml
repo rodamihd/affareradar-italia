@@ -50,3 +50,4 @@ jobs:
       - run: node lib/agentos-approval-redis-integration-test.js
       - run: node lib/agentos-auto-publish-http-rejection-selftest.js
       - run: node lib/agentos-trusted-reviewer-adapter-selftest.js
+      - run: node lib/agentos-supabase-session-verifier-selftest.js
