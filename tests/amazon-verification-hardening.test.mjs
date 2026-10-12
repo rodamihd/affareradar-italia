@@ -2,7 +2,7 @@ import { attestAmazonApiResult } from "../lib/amazon-verification-attestation.js
 import test from "node:test";
 import { readFileSync } from "node:fs";
 import assert from "node:assert/strict";
-import { evaluateAmazonVerification } from "../lib/amazon-verification-broker.js";
+import { evaluateAmazonVerification, mergeVerifiedAmazonData } from "../lib/amazon-verification-broker.js";
 
 process.env.AMAZON_VERIFICATION_ATTESTATION_SECRET = "integration-test-only-not-a-real-production-key-123456";
 const now = Date.parse("2026-10-12T12:00:00Z");
@@ -194,4 +194,19 @@ test("reference prices and promotional claims are bound to attestation", () => {
     Object.assign(deal,changes);
     assert.notEqual(evaluateAmazonVerification(deal,now).state,"VERIFIED");
   }
+});
+
+test("verification merge must preserve signed API facts over conflicting external signal", () => {
+  const external = { ...sample,source:"untrusted_signal",price:"1.00",oldPrice:"200.00",
+    discount:"99%",coupon:"external-coupon",historicalLow:true };
+  const verified={...sample,oldPrice:"35.00",discount:"20%",coupon:null,historicalLow:false};
+  verified.amazonVerificationAttestation=attestAmazonApiResult(verified);
+  const merged=mergeVerifiedAmazonData(external,verified);
+  assert.equal(merged.price,verified.price);
+  assert.equal(merged.coupon,null);
+  assert.equal(merged.historicalLow,false);
+  assert.equal(merged.amazonDataSource,"creators_api");
+  assert.equal(evaluateAmazonVerification(merged,now).state,"VERIFIED");
+  merged.oldPrice=external.oldPrice;
+  assert.notEqual(evaluateAmazonVerification(merged,now).state,"VERIFIED");
 });
