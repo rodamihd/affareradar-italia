@@ -276,3 +276,13 @@ test("shadow queue with zero limit emits no records", async () => {
   assert.equal(q.decision,"HOLD");
   assert.equal(q.publicationEnabled,false);
 });
+
+test("shadow projection never echoes arbitrary commercial source text", async () => {
+  const {buildShadowReview} = await import("../lib/preapi-shadow-review.js");
+  const r=buildShadowReview({asin:"B0C5DVGTR9",market:"IT",amazonUrl:"https://www.amazon.it/dp/B0C5DVGTR9",title:"Price error 99% coupon €1",category:"SUPER DEAL 99%",source:"Promo 99% today"});
+  assert.equal(r.title,"Prodotto da verificare");
+  assert.equal(r.category,null);
+  assert.equal(r.source,"external_signal");
+  assert.equal(r.gate,"HOLD");
+  assert.equal(r.autoPublishAllowed,false);
+});
