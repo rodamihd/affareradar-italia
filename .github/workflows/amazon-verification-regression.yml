@@ -8,6 +8,8 @@ on:
       - 'api/discover-amazon.js'
       - 'api/telegram.js'
       - 'api/discover-multisource.js'
+      - 'lib/preapi-shadow-review.js'
+      - 'lib/preapi-shadow-queue.js'
       - 'tests/amazon-verification-hardening.test.mjs'
       - '.github/workflows/amazon-verification-regression.yml'
   push:
