@@ -223,3 +223,13 @@ test("sanitization preserves trusted Amazon attestation and signed values", asyn
   assert.equal(output.body.coupon,verified.coupon);
   assert.equal(evaluateAmazonVerification(output.body,now).state,"VERIFIED");
 });
+
+test("displayed price and effective price each invalidate signature when changed", () => {
+  const base={...sample,price:"30.00",effectivePrice:"26.10"};
+  base.amazonVerificationAttestation=attestAmazonApiResult(base);
+  assert.equal(evaluateAmazonVerification(base,now).state,"VERIFIED");
+  for(const patch of [{price:"99.99"},{effectivePrice:"1.00"}]){
+    const changed={...base,...patch};
+    assert.notEqual(evaluateAmazonVerification(changed,now).state,"VERIFIED");
+  }
+});
