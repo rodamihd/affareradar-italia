@@ -619,6 +619,10 @@ async function submit(req, deal) {
 }
 
 async function submitPreApi(req, deal) {
+  // Fail closed before any pre-publication work or outbound Telegram request.
+  return { attempted:false, ok:true, status:200,
+    data:{ published:false, decision:"held", reason:"preapi_unattested_publication_disabled" } };
+
   if (String(process.env.AFFARERADAR_PRE_API_MODE || "").trim() !== "1") {
     return { attempted:false, ok:true, status:0, data:{ published:false, reason:"preapi_mode_disabled" } };
   }
@@ -720,15 +724,6 @@ async function submitPreApi(req, deal) {
     signalScore,
     dealScore:deal.dealScore ?? null,
     reliabilityScore:deal.reliabilityScore ?? null
-  };
-
-  // The final Telegram egress currently requires trusted API attestation.
-  // Do not acquire publication slots or call Telegram for unverified PREAPI signals.
-  return {
-    attempted:false,
-    ok:true,
-    status:200,
-    data:{ published:false, decision:"held", reason:"preapi_unattested_publication_disabled" }
   };
 
   const eligibility = evaluateProductEligibility(candidate);
