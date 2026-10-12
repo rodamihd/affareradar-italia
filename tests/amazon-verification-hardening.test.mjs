@@ -3,6 +3,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { evaluateAmazonVerification } from "../lib/amazon-verification-broker.js";
 
+process.env.AMAZON_VERIFICATION_ATTESTATION_SECRET = "integration-test-only-not-a-real-production-key-123456";
 const now = Date.parse("2026-10-12T12:00:00Z");
 const sample = {
   asin: "B0C5DVGTR9",
