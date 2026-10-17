@@ -10,7 +10,9 @@
 *{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;font-family:Inter,Arial,Helvetica,sans-serif;background:var(--bg);color:var(--text);line-height:1.5}
 a{color:inherit}.wrap{width:min(1100px,92vw);margin:auto}
 .topbar{position:sticky;top:0;z-index:20;background:rgba(255,255,255,.96);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
-.nav{min-height:68px;display:flex;align-items:center;gap:20px;justify-content:space-between}.brand{font-weight:900;font-size:22px;text-decoration:none}.navlinks{display:flex;gap:18px;align-items:center}.navlinks a{text-decoration:none;font-size:14px;font-weight:700;color:#334155}
+.nav{min-height:68px;display:flex;align-items:center;gap:20px;justify-content:space-between;position:relative}.brand{font-weight:900;font-size:22px;text-decoration:none}.navlinks{display:flex;gap:18px;align-items:center}.navlinks a{text-decoration:none;font-size:14px;font-weight:700;color:#334155}
+.mobile-menu{display:none;margin-left:auto}.mobile-menu summary{cursor:pointer;list-style:none;min-height:44px;min-width:92px;display:flex;align-items:center;justify-content:center;gap:10px;padding:9px 12px;border:1px solid var(--line);border-radius:10px;font-size:15px;font-weight:800;color:var(--dark);background:#fff}.mobile-menu summary::-webkit-details-marker{display:none}.mobile-menu summary::after{content:"☰";font-size:19px;line-height:1}.mobile-menu[open] summary::after{content:"×";font-size:24px}.mobile-navlinks{position:absolute;right:0;top:calc(100% - 4px);width:min(290px,92vw);padding:8px;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 16px 32px rgba(15,23,42,.18);display:grid;gap:4px;z-index:30}.mobile-navlinks a{display:flex;align-items:center;min-height:44px;padding:10px 12px;border-radius:8px;color:#334155;text-decoration:none;font-weight:700}.mobile-navlinks a:hover{background:#f1f5f9}a:focus-visible,summary:focus-visible{outline:3px solid var(--blue);outline-offset:3px}html{scroll-padding-top:85px}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
 .hero{background:linear-gradient(135deg,#0f172a,#1e293b);color:#fff;padding:72px 0 64px}.hero-grid{display:grid;grid-template-columns:1.45fr .8fr;gap:34px;align-items:center}.eyebrow{font-size:13px;letter-spacing:.14em;text-transform:uppercase;font-weight:800;color:#fbbf24}.hero h1{font-size:clamp(38px,6vw,66px);line-height:1;margin:12px 0 18px}.hero p{font-size:20px;color:#dbeafe;max-width:760px}.hero-actions{display:flex;gap:12px;flex-wrap:wrap;margin-top:24px}.btn{display:inline-flex;align-items:center;justify-content:center;padding:13px 18px;border-radius:12px;text-decoration:none;font-weight:900;border:0}.btn-primary{background:var(--amber);color:#111827}.btn-light{background:#fff;color:#0f172a}.hero-box{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.16);border-radius:20px;padding:22px}.hero-box strong{font-size:26px;display:block}.hero-box span{color:#cbd5e1}
 .section{padding:56px 0}.section h2{font-size:34px;margin:0 0 8px}.section-sub{margin:0 0 26px;color:var(--muted)}
 .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}.card{background:#fff;border:1px solid var(--line);border-radius:18px;padding:21px;box-shadow:0 8px 28px rgba(15,23,42,.04)}.card .icon{font-size:29px}.card h3{margin:10px 0 6px;font-size:18px}.card p{margin:0;color:var(--muted);font-size:14px}
@@ -18,7 +20,7 @@ a{color:inherit}.wrap{width:min(1100px,92vw);margin:auto}
 .notice{background:#fff7ed;border:1px solid #fed7aa;border-radius:16px;padding:18px;color:#7c2d12;font-weight:700;margin-top:28px}
 .status{display:inline-flex;align-items:center;gap:8px;font-size:13px;font-weight:800;padding:7px 10px;border-radius:999px;background:#ecfdf5;color:#065f46}.dot{width:8px;height:8px;border-radius:50%;background:#10b981}
 footer{background:#0f172a;color:#cbd5e1;padding:38px 0}.footer-grid{display:flex;justify-content:space-between;gap:24px;flex-wrap:wrap}.footer-grid strong{color:#fff}
-@media(max-width:900px){.hero-grid{grid-template-columns:1fr}.grid{grid-template-columns:1fr 1fr}.flow{grid-template-columns:1fr 1fr}.navlinks{display:none}}
+@media(max-width:900px){.hero-grid{grid-template-columns:1fr}.grid{grid-template-columns:1fr 1fr}.flow{grid-template-columns:1fr 1fr}.navlinks{display:none}.mobile-menu{display:block}}
 @media(max-width:620px){.grid,.flow{grid-template-columns:1fr}.hero{padding:50px 0}.hero-box{display:none}.section h2{font-size:28px}}
 </style>
 </head>
@@ -26,11 +28,19 @@ footer{background:#0f172a;color:#cbd5e1;padding:38px 0}.footer-grid{display:flex
 <header class="topbar">
   <div class="wrap nav">
     <a class="brand" href="#">📡 AffareRadar Italia</a>
-    <nav class="navlinks">
+    <nav class="navlinks" aria-label="Navigazione principale">
       <a href="#come-funziona">Come funziona</a>
       <a href="#categorie">Categorie</a>
-      <a href="https://t.me/AffareRadarOfferte" target="_blank" rel="noopener">Telegram</a>
+      <a href="https://t.me/AffareRadarOfferte" target="_blank" rel="noopener noreferrer">Telegram</a>
     </nav>
+    <details class="mobile-menu">
+      <summary>Menu</summary>
+      <nav class="mobile-navlinks" aria-label="Navigazione mobile">
+        <a href="#come-funziona">Come funziona</a>
+        <a href="#categorie">Categorie</a>
+        <a href="https://t.me/AffareRadarOfferte" target="_blank" rel="noopener noreferrer">Telegram</a>
+      </nav>
+    </details>
   </div>
 </header>
 
@@ -94,5 +104,18 @@ footer{background:#0f172a;color:#cbd5e1;padding:38px 0}.footer-grid{display:flex
     <div>Le offerte operative vengono pubblicate sul canale Telegram ufficiale.</div>
   </div>
 </footer>
+<script>
+  // Native <details> works without JavaScript; this only improves dismissal.
+  const mobileMenu = document.querySelector('.mobile-menu');
+  mobileMenu.querySelectorAll('a').forEach(link => {
+    link.addEventListener('click', () => { mobileMenu.open = false; });
+  });
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && mobileMenu.open) {
+      mobileMenu.open = false;
+      mobileMenu.querySelector('summary').focus();
+    }
+  });
+</script>
 </body>
 </html>
