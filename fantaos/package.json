@@ -1,0 +1,12 @@
+{
+  "name": "fantaos",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "postgres": "^3.4.7"
+  }
+}
