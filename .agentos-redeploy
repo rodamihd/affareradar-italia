@@ -1,0 +1,2 @@
+AgentOS 33.10 production redeploy marker.
+Purpose: reload production environment after adding AGENTOS_EXTERNAL_SECRET.
