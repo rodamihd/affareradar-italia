@@ -42,12 +42,12 @@ test('Upstash REST contract: EVAL JSON command array, no credential leakage',asy
     assert.equal(cmd[2],6);
     assert.equal(cmd[3],'affareradar:queue');
     assert.equal(cmd[4],'affareradar:queue:item:rest-contract');
-    assert.equal(cmd[9],'affareradar:queue:dead_letter');
-    assert.equal(cmd[10],'rest-contract');
-    assert.equal(cmd[11],now+60000);
-    assert.equal(JSON.parse(cmd[12]).body.asin,body.asin);
-    assert.equal(cmd[13],14*86400);
-    assert.equal(cmd[14],now);
+    assert.equal(cmd[8],'affareradar:queue:dead_letter');
+    assert.equal(cmd[9],'rest-contract');
+    assert.equal(cmd[10],now+60000);
+    assert.equal(JSON.parse(cmd[11]).body.asin,body.asin);
+    assert.equal(cmd[12],14*86400);
+    assert.equal(cmd[13],now);
     assert.equal(observed.options.body.includes('synthetic-never-real'),false);
   } finally { restore(); }
 });
