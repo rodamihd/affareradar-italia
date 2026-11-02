@@ -1,0 +1,87 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { processDueItem, CLAIM_LUA } from '../lib/queue-delivery.mjs';
+
+// Test-only Docker container, no credentials or outbound publications.
+const enabled = process.env.QUEUE_REDIS_INTEGRATION === '1';
+const container = 'affareradar-queue-redis-test';
+function redis(cmd, ...args) {
+  const stdout = execFileSync('docker', ['exec', container, 'redis-cli', '--json', cmd, ...args.map(String)], {
+    encoding:'utf8', timeout:5000, maxBuffer:1024*1024
+  }).trim();
+  const response = JSON.parse(stdout);
+  if (response && typeof response === 'object' && response.err) throw Error('redis_error:' + response.err);
+  return response;
+}
+async function command(cmd,...args) { return { configured:true, result:redis(cmd,...args) }; }
+const itemKey=id=>'affareradar:queue:item:'+id;
+const reviewKey=id=>'affareradar:queue:review:item:'+id;
+function body(now,extra={}) {
+  return { asin:'B012345678', amazonUrl:'https://www.amazon.it/dp/B012345678', price:'20.00',
+    priceVerified:true, verifiedAt:new Date(now-60000).toISOString(), stock:true,...extra };
+}
+function seed(id,now,extra={}) {
+  const item={body:body(now,extra),dealId:id,attempts:0,dueAt:now};
+  assert.equal(redis('SET',itemKey(id),JSON.stringify(item),'EX','600'),'OK');
+  redis('ZADD','affareradar:queue',now,id);
+}
+function deliver(id,now,publish) {
+  return processDueItem({ redisCommand:command, publish, dealId:id, now });
+}
+const published=async()=>({status:200,data:{ok:true,published:true,telegram_message_id:42}});
+
+test('real Redis EVAL: confirmed delivery ACK only after send', {skip:!enabled}, async()=>{
+  const id='redistest-ack',now=Date.now();seed(id,now);
+  let queued=false;
+  const r=await deliver(id,now,async()=>{queued=redis('ZSCORE','affareradar:queue',id)!==null;return published();});
+  assert.equal(queued,true);assert.equal(r.finalize,'ACKED');
+  assert.equal(redis('GET',itemKey(id)),null);
+  assert.equal(redis('ZSCORE','affareradar:queue',id),null);
+});
+
+test('real Redis EVAL: unknown delivery quarantines, no retry', {skip:!enabled}, async()=>{
+  const id='redistest-review',now=Date.now();seed(id,now);
+  let sends=0;
+  const r=await deliver(id,now,async()=>{sends++;throw Error('synthetic_timeout');});
+  assert.equal(r.finalize,'MANUAL_REVIEW');
+  assert.notEqual(redis('GET',reviewKey(id)),null);
+  assert.notEqual(redis('ZSCORE','affareradar:queue:review',id),null);
+  await deliver(id,now,async()=>{sends++;return published();});
+  assert.equal(sends,1);
+});
+
+test('real Redis EVAL: stale price cannot reach publisher', {skip:!enabled}, async()=>{
+  const id='redistest-stale',now=Date.now();
+  seed(id,now,{verifiedAt:new Date(now-3600000).toISOString()});
+  let sends=0;
+  const r=await deliver(id,now,async()=>{sends++;return published();});
+  assert.equal(sends,0);assert.equal(r.finalize,'DEAD_LETTER');
+  assert.notEqual(redis('ZSCORE','affareradar:queue:dead_letter',id),null);
+});
+
+test('real Redis EVAL: two workers cannot send same item concurrently', {skip:!enabled}, async()=>{
+  const id='redistest-concurrent',now=Date.now();seed(id,now);
+  let release,started, sends=0;
+  const gate=new Promise(resolve=>{started=resolve;});
+  const first=deliver(id,now,async()=>{
+    sends++;started();await new Promise(resolve=>{release=resolve;});return published();
+  });
+  await gate;
+  const second=await deliver(id,now,async()=>{sends++;return published();});
+  assert.equal(second.status,'locked');
+  release();assert.equal((await first).finalize,'ACKED');assert.equal(sends,1);
+});
+
+test('real Redis EVAL: abandoned journal goes to review on next poll', {skip:!enabled}, async()=>{
+  const id='redistest-abandon',now=Date.now();seed(id,now);
+  const keys=['affareradar:queue',itemKey(id),'affareradar:queue:lease:'+id,
+    'affareradar:queue:journal:'+id,'affareradar:queue:review',reviewKey(id)];
+  const claim=redis('EVAL',CLAIM_LUA,keys.length,...keys,id,now,'fake-worker-token',180,86400);
+  assert.equal(claim[0],'CLAIMED');
+  redis('DEL','affareradar:queue:lease:'+id);
+  let sends=0;
+  const out=await deliver(id,now,async()=>{sends++;return published();});
+  assert.equal(sends,0);assert.equal(out.status,'uncertain_review');
+  assert.notEqual(redis('ZSCORE','affareradar:queue:review',id),null);
+});
