@@ -63,9 +63,10 @@ class FakeRedis {
       this.z(queue).delete(deal);this.kv.delete(item);this.kv.delete(journal);this.kv.delete(lease);
       return {configured:true,result:'ACKED'};
     }
-    if(action==='RETRY'){
+    if(action==='RETRY'||action==='DEFER'){
       this.kv.set(item,next);this.z(queue).set(deal,Number(backoff));
-      this.kv.delete(journal);this.kv.delete(lease);return {configured:true,result:'REQUEUED'};
+      this.kv.delete(journal);this.kv.delete(lease);
+      return {configured:true,result:action==='DEFER'?'DEFERRED':'REQUEUED'};
     }
     if(action==='DLQ'){
       this.kv.set(deadItem,next);this.z(dlq).set(deal,Number(now));this.z(queue).delete(deal);this.kv.delete(item);
@@ -120,9 +121,19 @@ test('ambiguous HTTP 502, response body unknown, and transport failure all requi
     assert.equal(db.get('D'),null);assert.ok(db.kv.has('affareradar:queue:review:item:D'));assert.equal(db.z('affareradar:queue:review').has('D'),true);
   }
 });
-test('stale price and unverified coupon cannot be published',async()=>{
+test('stale verification is quarantined for re-verification without sending',async()=>{
+  const db=new FakeRedis();
+  db.put('E-stale',validBody({verifiedAt:new Date(NOW-20*60000).toISOString()}));
+  let sent=0;
+  const r=await engine(db,'E-stale',async()=>{sent++;return published();});
+  assert.equal(sent,0);
+  assert.equal(r.status,'review');
+  assert.equal(r.reason,'reverification_required');
+  assert.ok(db.z('affareradar:queue:review').has('E-stale'));
+  assert.equal(db.has('E-stale'),false);
+});
+test('invalid coupon, unverified price and expired promotion are dead lettered without sending',async()=>{
   for(const body of [
-    validBody({verifiedAt:new Date(NOW-20*60000).toISOString()}),
     validBody({coupon:'10%',couponVerified:false}),
     validBody({priceVerified:false}),
     validBody({promotionTimeLimited:true,promotionValidUntil:new Date(NOW-1000).toISOString()})
@@ -132,6 +143,37 @@ test('stale price and unverified coupon cannot be published',async()=>{
     assert.equal(sent,0);assert.equal(r.status,'dead_letter');
     assert.ok(db.z('affareradar:queue:dead_letter').has('E'));
   }
+});
+test('anti-spam deferral is atomically scheduled and does not consume a send attempt',async()=>{
+  const db=new FakeRedis();db.put('E-defer');
+  const nextDueAt=NOW+2*60000;
+  const r=await engine(db,'E-defer',async()=>({
+    status:200,data:{ok:true,published:false,decision:'deferred',reason:'anti_spam',nextAttemptAt:new Date(nextDueAt).toISOString()}
+  }));
+  assert.equal(r.status,'deferred');
+  assert.equal(r.finalize,'DEFERRED');
+  assert.equal(db.z('affareradar:queue').get('E-defer'),nextDueAt);
+  assert.equal(db.get('E-defer').attempts,0);
+  assert.equal(db.get('E-defer').deferCount,1);
+  assert.equal(db.kv.has('affareradar:queue:journal:E-defer'),false);
+});
+test('anti-spam wait exceeding verified freshness is quarantined, not auto-retried',async()=>{
+  const db=new FakeRedis();db.put('E-long');
+  const r=await engine(db,'E-long',async()=>({
+    status:200,data:{ok:true,published:false,decision:'deferred',reason:'anti_spam',nextAttemptAt:new Date(NOW+3600000).toISOString()}
+  }));
+  assert.equal(r.status,'review');
+  assert.equal(r.reason,'reverification_required_before_deferral');
+  assert.ok(db.z('affareradar:queue:review').has('E-long'));
+  assert.equal(db.has('E-long'),false);
+});
+test('invalid defer timestamp is review-only',async()=>{
+  const db=new FakeRedis();db.put('E-invalid');
+  const r=await engine(db,'E-invalid',async()=>({
+    status:200,data:{ok:true,published:false,decision:'deferred',reason:'anti_spam',nextAttemptAt:'invalid'}
+  }));
+  assert.equal(r.status,'review');
+  assert.equal(db.has('E-invalid'),false);
 });
 test('concurrent processors cannot claim the same deal while lease active',async()=>{
   const db=new FakeRedis();db.put('F');let proceed;let sends=0;
