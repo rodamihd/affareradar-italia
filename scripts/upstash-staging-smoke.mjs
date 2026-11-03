@@ -42,7 +42,7 @@ async function redis(...args) {
   });
   if (!response.ok) throw Error('staging_redis_http_failure');
   const data = await response.json();
-  if (data.error || data.result === undefined || data.result === null) throw Error('staging_redis_command_failure');
+  if (data.error || !Object.prototype.hasOwnProperty.call(data,'result')) throw Error('staging_redis_command_failure');
   return data.result;
 }
 
