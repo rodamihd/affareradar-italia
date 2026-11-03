@@ -186,10 +186,12 @@ function evaluateAntiSpam(state, body, now) {
     critical,
     failures,
     limits:{ maxPerHour, maxPerCategoryHour, minGapMinutes },
-    current:{ globalCasync function enqueueDeal(body, dealId, dueAt, reason) {
-  return enqueuePublicationQueue({body, dealId, dueAt, reason});
+    current:{ globalCount:state.globalCount, categoryCount:state.categoryCount }
+  };
 }
-queued:true, mode:"best_effort_in_memory", dueAt:nowIso(dueAt) };
+
+async function enqueueDeal(body, dealId, dueAt, reason) {
+  return enqueuePublicationQueue({body, dealId, dueAt, reason});
 }
 
 function computeQueueDueAt(antiSpamState, antiSpam, now) {
