@@ -1,0 +1,33 @@
+name: Queue Reliability synthetic tests
+
+on:
+  pull_request:
+    paths:
+      - 'api/process-queue.js'
+      - 'api/auto-publish.js'
+      - 'lib/queue-enqueue.mjs'
+      - 'lib/queue-delivery.mjs'
+      - 'test/queue-delivery.test.mjs'
+      - '.github/workflows/affareradar-queue-reliability-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax checks for queue and publisher (no secrets or network)
+        run: |
+          node --check api/auto-publish.js
+          node --check api/process-queue.js
+          node --check lib/queue-delivery.mjs
+          node --check lib/queue-enqueue.mjs
+      - name: Synthetic tests (no secrets, Redis, or Telegram)
+        run: node --experimental-default-type=module --test test/queue-delivery.test.mjs
