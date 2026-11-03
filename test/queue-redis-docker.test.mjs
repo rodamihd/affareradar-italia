@@ -61,6 +61,33 @@ test('real Redis EVAL: stale price cannot reach publisher', {skip:!enabled}, asy
   assert.notEqual(redis('ZSCORE','affareradar:queue:dead_letter',id),null);
 });
 
+test('real Redis EVAL: anti-spam deferral releases lease, retains item and updates due time', {skip:!enabled},async()=>{
+  const id='redistest-defer',now=Date.now();seed(id,now);
+  const next=now+120000;
+  const r=await deliver(id,now,async()=>({
+    status:200,data:{ok:true,published:false,decision:'deferred',reason:'anti_spam',nextAttemptAt:new Date(next).toISOString()}
+  }));
+  assert.equal(r.finalize,'DEFERRED');
+  assert.equal(redis('ZSCORE','affareradar:queue',id),String(next));
+  assert.equal(redis('GET','affareradar:queue:lease:'+id),null);
+  assert.equal(redis('GET','affareradar:queue:journal:'+id),null);
+  const item=JSON.parse(redis('GET',itemKey(id)));
+  assert.equal(item.attempts,0);
+  assert.equal(item.deferCount,1);
+});
+test('real Redis EVAL: deferral past freshness holds for manual re-verification', {skip:!enabled},async()=>{
+  const id='redistest-defer-stale',now=Date.now();seed(id,now);
+  const next=now+3600000;
+  const r=await deliver(id,now,async()=>({
+    status:200,data:{ok:true,published:false,decision:'deferred',reason:'anti_spam',nextAttemptAt:new Date(next).toISOString()}
+  }));
+  assert.equal(r.finalize,'MANUAL_REVIEW');
+  assert.equal(r.reason,'reverification_required_before_deferral');
+  assert.equal(redis('ZSCORE','affareradar:queue',id),null);
+  assert.notEqual(redis('ZSCORE','affareradar:queue:review',id),null);
+  assert.notEqual(redis('GET',reviewKey(id)),null);
+});
+
 test('real Redis EVAL: two workers cannot send same item concurrently', {skip:!enabled}, async()=>{
   const id='redistest-concurrent',now=Date.now();seed(id,now);
   let release,started, sends=0;
