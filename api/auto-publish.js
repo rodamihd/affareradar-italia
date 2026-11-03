@@ -929,6 +929,18 @@ export default async function handler(req, res) {
 
   if (!antiSpam.passed) {
     const dueAt = computeQueueDueAt(antiSpamState, antiSpam, now);
+    if (body.__fromQueue === true) {
+      // Queue owns the delivery journal; do not attempt a second enqueue while
+      // the original item is leased. The caller will atomically reschedule it.
+      return res.status(200).json({
+        ok:true,
+        published:false,
+        decision:"deferred",
+        reason:"anti_spam",
+        nextAttemptAt:nowIso(dueAt),
+        antiSpam
+      });
+    }
     const queue = await enqueueDeal(body, dealId, dueAt, "anti_spam");
     if (!queue.queued) {
       await trackMetric("queue_unavailable", body, { queueReason:queue.reason });
