@@ -57,8 +57,9 @@ test('real Redis EVAL: stale price cannot reach publisher', {skip:!enabled}, asy
   seed(id,now,{verifiedAt:new Date(now-3600000).toISOString()});
   let sends=0;
   const r=await deliver(id,now,async()=>{sends++;return published();});
-  assert.equal(sends,0);assert.equal(r.finalize,'DEAD_LETTER');
-  assert.notEqual(redis('ZSCORE','affareradar:queue:dead_letter',id),null);
+  assert.equal(sends,0);assert.equal(r.finalize,'MANUAL_REVIEW');
+  assert.notEqual(redis('ZSCORE','affareradar:queue:review',id),null);
+  assert.equal(redis('ZSCORE','affareradar:queue',id),null);
 });
 
 test('real Redis EVAL: anti-spam deferral releases lease, retains item and updates due time', {skip:!enabled},async()=>{
@@ -68,7 +69,7 @@ test('real Redis EVAL: anti-spam deferral releases lease, retains item and updat
     status:200,data:{ok:true,published:false,decision:'deferred',reason:'anti_spam',nextAttemptAt:new Date(next).toISOString()}
   }));
   assert.equal(r.finalize,'DEFERRED');
-  assert.equal(redis('ZSCORE','affareradar:queue',id),String(next));
+  assert.equal(Number(redis('ZSCORE','affareradar:queue',id)),next);
   assert.equal(redis('GET','affareradar:queue:lease:'+id),null);
   assert.equal(redis('GET','affareradar:queue:journal:'+id),null);
   const item=JSON.parse(redis('GET',itemKey(id)));
