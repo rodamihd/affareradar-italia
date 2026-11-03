@@ -1,0 +1,25 @@
+name: Telegram unauthenticated-test security gate
+on:
+  pull_request:
+    paths:
+      - "api/telegram.js"
+      - "test/telegram-unauthenticated-test-gate.test.mjs"
+      - ".github/workflows/telegram-security-gate.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  telegram-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Parse Telegram handler (no secrets or network)
+        run: node --check api/telegram.js
+      - name: Security regression tests (static, no Telegram requests)
+        run: node --experimental-default-type=module --test test/telegram-unauthenticated-test-gate.test.mjs
