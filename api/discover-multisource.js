@@ -1,7 +1,7 @@
 // PRIME_EVENT_ENV_REFRESH_V2
 // PRIME_EVENT_ENV_REFRESH_V1
 import crypto from "node:crypto";
-import { compareDealsUnderTen } from "../lib/under10-priority.js";
+import { compareDealsUnderTen, underTenPriority } from "../lib/under10-priority.js";
 import { amazonAgentUserAgent, evaluateProductEligibility, amazonPriceDisplayAllowed, amazonPromotionDisplayAllowed } from "../lib/amazon-compliance.js";
 import { agentOsEvent, universalEntityId } from "../lib/agentos-adapter.js";
 import { buildSignalQuarantine, extractAsinFromAmazonUrl } from "../lib/signal-quarantine.js";
@@ -1052,10 +1052,10 @@ export default async function handler(req, res) {
       }
     };
   }).sort((a,b) =>
-    compareDealsUnderTen(a, b) ||
+    underTenPriority(b) - underTenPriority(a) ||
     Number(b.crossSourceConsensus?.corroborated === true) - Number(a.crossSourceConsensus?.corroborated === true) ||
     Number(b.crossSourceConsensus?.sourceCount || 1) - Number(a.crossSourceConsensus?.sourceCount || 1) ||
-    compareDealsUnderTen(a, b)
+    Number(b.dealScore || 0) - Number(a.dealScore || 0)
   );
 
   const maxCandidates = Math.max(1, Math.min(12, Number(process.env.MULTISOURCE_MAX_CANDIDATES || 10)));
