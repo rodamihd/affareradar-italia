@@ -1052,6 +1052,7 @@ export default async function handler(req, res) {
       }
     };
   }).sort((a,b) =>
+    compareDealsUnderTen(a, b) ||
     Number(b.crossSourceConsensus?.corroborated === true) - Number(a.crossSourceConsensus?.corroborated === true) ||
     Number(b.crossSourceConsensus?.sourceCount || 1) - Number(a.crossSourceConsensus?.sourceCount || 1) ||
     compareDealsUnderTen(a, b)
