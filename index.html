@@ -1,98 +1,277 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="it">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AffareRadar Italia | Offerte Amazon verificate</title>
-<meta name="description" content="AffareRadar Italia seleziona segnali di offerta e pubblica sul canale Telegram solo opportunità che superano i controlli previsti dal sistema.">
-<style>
-:root{--bg:#f5f7fb;--card:#fff;--text:#111827;--muted:#64748b;--line:#e5e7eb;--dark:#0f172a;--amber:#f59e0b;--green:#047857;--blue:#2563eb}
-*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;font-family:Inter,Arial,Helvetica,sans-serif;background:var(--bg);color:var(--text);line-height:1.5}
-a{color:inherit}.wrap{width:min(1100px,92vw);margin:auto}
-.topbar{position:sticky;top:0;z-index:20;background:rgba(255,255,255,.96);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
-.nav{min-height:68px;display:flex;align-items:center;gap:20px;justify-content:space-between}.brand{font-weight:900;font-size:22px;text-decoration:none}.navlinks{display:flex;gap:18px;align-items:center}.navlinks a{text-decoration:none;font-size:14px;font-weight:700;color:#334155}
-.hero{background:linear-gradient(135deg,#0f172a,#1e293b);color:#fff;padding:72px 0 64px}.hero-grid{display:grid;grid-template-columns:1.45fr .8fr;gap:34px;align-items:center}.eyebrow{font-size:13px;letter-spacing:.14em;text-transform:uppercase;font-weight:800;color:#fbbf24}.hero h1{font-size:clamp(38px,6vw,66px);line-height:1;margin:12px 0 18px}.hero p{font-size:20px;color:#dbeafe;max-width:760px}.hero-actions{display:flex;gap:12px;flex-wrap:wrap;margin-top:24px}.btn{display:inline-flex;align-items:center;justify-content:center;padding:13px 18px;border-radius:12px;text-decoration:none;font-weight:900;border:0}.btn-primary{background:var(--amber);color:#111827}.btn-light{background:#fff;color:#0f172a}.hero-box{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.16);border-radius:20px;padding:22px}.hero-box strong{font-size:26px;display:block}.hero-box span{color:#cbd5e1}
-.section{padding:56px 0}.section h2{font-size:34px;margin:0 0 8px}.section-sub{margin:0 0 26px;color:var(--muted)}
-.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}.card{background:#fff;border:1px solid var(--line);border-radius:18px;padding:21px;box-shadow:0 8px 28px rgba(15,23,42,.04)}.card .icon{font-size:29px}.card h3{margin:10px 0 6px;font-size:18px}.card p{margin:0;color:var(--muted);font-size:14px}
-.flow{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-top:24px}.step{background:#fff;border:1px solid var(--line);border-radius:16px;padding:16px;font-size:13px}.step strong{display:block;font-size:14px;margin-bottom:4px}
-.notice{background:#fff7ed;border:1px solid #fed7aa;border-radius:16px;padding:18px;color:#7c2d12;font-weight:700;margin-top:28px}
-.status{display:inline-flex;align-items:center;gap:8px;font-size:13px;font-weight:800;padding:7px 10px;border-radius:999px;background:#ecfdf5;color:#065f46}.dot{width:8px;height:8px;border-radius:50%;background:#10b981}
-footer{background:#0f172a;color:#cbd5e1;padding:38px 0}.footer-grid{display:flex;justify-content:space-between;gap:24px;flex-wrap:wrap}.footer-grid strong{color:#fff}
-@media(max-width:900px){.hero-grid{grid-template-columns:1fr}.grid{grid-template-columns:1fr 1fr}.flow{grid-template-columns:1fr 1fr}.navlinks{display:none}}
-@media(max-width:620px){.grid,.flow{grid-template-columns:1fr}.hero{padding:50px 0}.hero-box{display:none}.section h2{font-size:28px}}
-</style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#071d25">
+  <meta name="description" content="AffareRadar Italia: scopri segnalazioni di offerte, coupon e occasioni selezionate. Entra gratuitamente nel canale Telegram.">
+  <meta property="og:type" content="website">
+  <meta property="og:locale" content="it_IT">
+  <meta property="og:title" content="AffareRadar | Le occasioni, senza cercarle ovunque">
+  <meta property="og:description" content="Offerte e coupon selezionati, con trasparenza sui prezzi. Scopri il canale Telegram AffareRadar.">
+  <title>AffareRadar Italia | Le occasioni, senza cercarle ovunque</title>
+  <style>
+    :root{--navy:#071d25;--navy-2:#092832;--navy-3:#103440;--aqua:#53eac5;--lime:#c7ff69;--cream:#f6f8f1;--paper:#ffffff;--ink:#132f36;--muted:#55717a;--darkmuted:#b1c8c8;--stroke:#dbe5df;--shadow:0 25px 70px rgba(9,29,37,.11);--max:1180px}
+    *{box-sizing:border-box}
+    html{scroll-behavior:smooth;scroll-padding-top:100px}
+    body{margin:0;background:var(--cream);font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Arial,sans-serif;color:var(--ink);line-height:1.5;-webkit-font-smoothing:antialiased}
+    a{color:inherit}
+    button{font:inherit}
+    a:focus-visible,button:focus-visible,summary:focus-visible{outline:3px solid var(--aqua);outline-offset:4px;border-radius:8px}
+    .skip{position:absolute;top:-60px;left:14px;padding:10px 18px;background:var(--lime);z-index:100;color:var(--navy)}
+    .skip:focus{top:12px}
+    .container{width:min(calc(100% - 48px),var(--max));margin-inline:auto}
+    .announcement{background:#c7ff69;color:#11312c;font-weight:750;font-size:12px;letter-spacing:.08em}
+    .announcement .container{min-height:34px;display:flex;align-items:center;justify-content:center;gap:14px;text-align:center}
+    .announcement .dot{width:6px;height:6px;background:#317957;border-radius:50%;display:inline-block;flex-shrink:0}
+    .header{position:sticky;top:0;z-index:50;background:rgba(7,29,37,.96);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);border-bottom:1px solid rgba(255,255,255,.09);color:#fff}
+    .nav{display:flex;align-items:center;justify-content:space-between;gap:22px;min-height:79px}
+    .brand{display:inline-flex;align-items:center;gap:12px;text-decoration:none;font-weight:850;letter-spacing:-.035em;font-size:22px;white-space:nowrap}
+    .brand strong{color:var(--lime)}
+    .brand-icon{width:38px;height:38px;border:2px solid var(--lime);border-radius:50%;display:inline-grid;place-items:center;position:relative;flex-shrink:0}
+    .brand-icon:before{content:"";position:absolute;inset:6px;border:1.5px solid rgba(199,255,105,.6);border-radius:50%}
+    .brand-icon:after{content:"";position:absolute;width:7px;height:7px;right:8px;top:7px;background:var(--lime);border-radius:50%;box-shadow:0 0 12px var(--lime)}
+    .brand-icon i{display:block;width:2px;height:16px;background:var(--lime);transform:rotate(46deg);transform-origin:bottom center}
+    .navlinks{display:flex;align-items:center;gap:26px;margin-left:auto}
+    .navlinks a{text-decoration:none;color:#d7e9e7;font-size:13px;font-weight:700;transition:color .2s}
+    .navlinks a:hover{color:var(--lime)}
+    .button{min-height:51px;display:inline-flex;align-items:center;justify-content:center;gap:12px;padding:13px 20px;border-radius:14px;font-size:14px;font-weight:800;line-height:1.2;text-decoration:none;border:1px solid transparent;transition:transform .2s,background .2s,box-shadow .2s;cursor:pointer;text-align:center}
+    .button:hover{transform:translateY(-2px)}
+    .button-primary{background:var(--lime);color:#09251d;box-shadow:0 12px 26px rgba(163,236,71,.18)}
+    .button-primary:hover{background:#deff9e;box-shadow:0 15px 29px rgba(163,236,71,.25)}
+    .button-outline{color:#fff;border-color:rgba(255,255,255,.22);background:rgba(255,255,255,.06)}
+    .button-outline:hover{background:rgba(255,255,255,.12)}
+    .button-dark{background:#082731;color:#fff}
+    .button-dark:hover{background:#14404a}
+    .nav-cta{min-height:43px;border-radius:12px;padding:10px 16px;margin-left:4px;white-space:nowrap}
+    .button svg{width:18px;height:18px;flex-shrink:0;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+    .mobile-nav{display:none}
+    .hero{background:radial-gradient(ellipse at 77% 36%,rgba(31,122,115,.35),transparent 44%),linear-gradient(160deg,#071d25 8%,#0c2b36 82%);color:#fff;position:relative;overflow:hidden}
+    .hero:before{content:"";pointer-events:none;position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,.024) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.024) 1px,transparent 1px);background-size:58px 58px;mask-image:linear-gradient(90deg,transparent 30%,#000 95%)}
+    .hero:after{content:"";pointer-events:none;position:absolute;bottom:-170px;left:-60px;width:470px;height:470px;border-radius:50%;border:1px solid rgba(74,236,191,.10)}
+    .hero-grid{position:relative;display:grid;grid-template-columns:minmax(0,1.08fr) minmax(0,.92fr);min-height:604px;align-items:center;gap:42px;padding:74px 0 88px}
+    .eyebrow{display:inline-flex;align-items:center;gap:9px;color:var(--aqua);font-size:12px;font-weight:850;letter-spacing:.16em;text-transform:uppercase}
+    .eyebrow .led{width:7px;height:7px;border-radius:50%;background:var(--aqua);box-shadow:0 0 12px var(--aqua)}
+    .hero h1{font-size:clamp(51px,5.55vw,83px);line-height:1.015;letter-spacing:-.066em;margin:24px 0 22px;max-width:720px;font-weight:875}
+    .hero h1 span{color:var(--lime)}
+    .hero-copy{font-size:clamp(16px,1.55vw,18px);color:#c4d9d7;max-width:545px;line-height:1.73;margin:0}
+    .hero-actions{display:flex;gap:12px;flex-wrap:wrap;margin:32px 0 28px}
+    .hero-actions .button{min-height:57px;padding:15px 23px}
+    .hero-micro{display:flex;gap:12px 22px;flex-wrap:wrap;color:#a9c9c7;font-size:12px}
+    .hero-micro span{display:inline-flex;gap:7px;align-items:center}
+    .hero-micro svg{width:15px;height:15px;color:var(--aqua)}
+    .visual{height:480px;display:grid;place-items:center;position:relative;isolation:isolate}
+    .visual:before{content:"";width:93%;aspect-ratio:1;position:absolute;border-radius:50%;background:radial-gradient(circle,rgba(31,210,168,.09),rgba(27,155,133,.035) 57%,transparent 71%);filter:blur(4px)}
+    .radar{width:min(100%,450px);aspect-ratio:1;position:relative;border-radius:50%;background:radial-gradient(circle at 50% 50%,rgba(113,255,176,.08) 0 10%,transparent 10% 25%,rgba(28,127,117,.12) 25.2% 25.6%,transparent 26% 48%,rgba(42,151,135,.13) 48.2% 48.6%,transparent 49% 73%,rgba(29,115,104,.1) 73.2% 73.7%,transparent 74%),radial-gradient(circle,#12413e 0%,#0a2a32 70%);border:1px solid rgba(106,239,201,.25);box-shadow:inset 0 0 55px rgba(34,219,160,.09),0 0 90px rgba(7,238,171,.045)}
+    .radar:before,.radar:after{content:"";border:1px solid rgba(97,232,202,.17);border-radius:50%;position:absolute;inset:17%}
+    .radar:after{inset:34%}
+    .radar-cross{position:absolute;background:rgba(83,234,197,.15)}
+    .radar-cross.horizontal{width:100%;height:1px;top:50%}
+    .radar-cross.vertical{height:100%;width:1px;left:50%}
+    .sweep{position:absolute;inset:0;overflow:hidden;border-radius:50%;animation:scan 13s linear infinite}
+    .sweep:before{content:"";position:absolute;inset:0;border-radius:50%;background:conic-gradient(from 0deg,transparent 0deg,transparent 275deg,rgba(55,233,170,.06) 318deg,rgba(106,255,194,.42) 359deg,transparent 360deg)}
+    .sweep:after{content:"";position:absolute;width:49%;height:2px;top:50%;left:50%;background:linear-gradient(90deg,rgba(74,255,174,.85),transparent);transform-origin:left center;box-shadow:0 0 13px rgba(63,255,168,.55)}
+    .signal{position:absolute;width:10px;height:10px;background:var(--lime);border:2px solid #073128;border-radius:50%;box-shadow:0 0 0 8px rgba(173,250,112,.1),0 0 24px rgba(197,255,106,.6)}
+    .signal.one{top:27%;left:62%}.signal.two{top:62%;left:24%}.signal.three{top:69%;left:76%;background:var(--aqua)}
+    .radar-center{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);height:94px;width:94px;border-radius:50%;background:#092c34;border:1px solid rgba(199,255,105,.3);display:flex;flex-direction:column;align-items:center;justify-content:center;box-shadow:0 0 35px rgba(29,255,168,.12)}
+    .radar-center span:first-child{font-size:11px;letter-spacing:.16em;color:#a8cec7;font-weight:850}
+    .radar-center span:last-child{font-size:21px;color:var(--lime);font-weight:900;letter-spacing:-.04em}
+    .float-card{position:absolute;z-index:2;padding:15px 17px;border-radius:16px;background:rgba(14,54,62,.93);border:1px solid rgba(139,248,209,.24);box-shadow:0 20px 55px rgba(0,0,0,.22);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
+    .float-card small{display:block;font-size:10px;letter-spacing:.13em;color:#b4d0ce;font-weight:800;margin-bottom:5px}
+    .float-card strong{display:block;font-size:20px;letter-spacing:-.04em;color:#fff;line-height:1.2}
+    .float-card .accent{color:var(--lime)}
+    .float-card.top{top:42px;right:-5px;transform:rotate(4deg)}
+    .float-card.bottom{bottom:53px;left:-21px;transform:rotate(-4deg)}
+    .float-card.tiny{bottom:26px;right:3px;padding:10px 13px;background:rgba(199,255,105,.95);color:#132f26;border:0}
+    .float-card.tiny strong{font-size:11px;letter-spacing:.07em;color:#132f26}
+    @keyframes scan{to{transform:rotate(360deg)}}
+    .benefit-ribbon{background:#0e3039;border-top:1px solid rgba(255,255,255,.08);color:#d6e7e3}
+    .ribbon-row{min-height:74px;display:grid;grid-template-columns:repeat(3,1fr);align-items:center;gap:20px}
+    .ribbon-item{display:flex;align-items:center;gap:11px;justify-content:center;font-size:13px;font-weight:700}
+    .ribbon-item:not(:last-child){border-right:1px solid rgba(255,255,255,.13)}
+    .ribbon-icon{color:var(--lime);font-size:21px;font-weight:900}
+    .section{padding:105px 0}
+    .section-heading{display:flex;justify-content:space-between;align-items:end;gap:24px;margin-bottom:36px}
+    .section-label{display:inline-block;font-size:12px;letter-spacing:.16em;text-transform:uppercase;font-weight:850;color:#0a7767;margin-bottom:14px}
+    .section-heading h2,.section h2{font-size:clamp(35px,4vw,55px);letter-spacing:-.058em;line-height:1.075;margin:0;font-weight:850}
+    .section-heading p{max-width:370px;margin:0;color:var(--muted);font-size:15px;line-height:1.7}
+    .categories{background:var(--cream)}
+    .category-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:17px}
+    .category{min-height:217px;border-radius:24px;padding:25px;position:relative;overflow:hidden;display:flex;flex-direction:column;justify-content:space-between;isolation:isolate}
+    .category:after{content:"";position:absolute;width:172px;height:172px;border-radius:50%;right:-48px;bottom:-63px;border:25px solid rgba(255,255,255,.45);z-index:-1}
+    .category:nth-child(1){background:#dff6ee}.category:nth-child(2){background:#e7eeff}.category:nth-child(3){background:#fff0ce}.category:nth-child(4){background:#f4e6f7}.category:nth-child(5){background:#e4f1d6}.category:nth-child(6){background:#e5eff1}
+    .cat-emoji{width:55px;height:55px;display:grid;place-items:center;border-radius:17px;background:rgba(255,255,255,.77);font-size:27px;box-shadow:0 7px 22px rgba(39,58,50,.05)}
+    .category h3{font-size:22px;letter-spacing:-.045em;margin:17px 0 5px;line-height:1.16}
+    .category p{font-size:13px;line-height:1.55;color:#48676a;margin:0;max-width:245px}
+    .deals{background:#fff;padding:98px 0 108px}
+    .deals .section-heading{margin-bottom:30px}
+    .feed-panel{border:1px solid #cce1d8;border-radius:26px;overflow:hidden;background:#f4fbf7;min-height:272px;display:flex;flex-direction:column}
+    .feed-panel-head{display:flex;align-items:center;justify-content:space-between;gap:15px;flex-wrap:wrap;padding:18px 25px;border-bottom:1px solid #dbe9e3}
+    .feed-indicator{display:inline-flex;align-items:center;gap:9px;text-transform:uppercase;letter-spacing:.11em;font-size:11px;color:#2e7566;font-weight:850}
+    .feed-indicator:before{content:"";background:#72c5a2;width:9px;height:9px;border-radius:50%}
+    .feed-caption{font-size:12px;color:#5b7879}
+    .feed-empty{flex:1;display:grid;grid-template-columns:68px 1fr auto;gap:22px;align-items:center;padding:38px 30px}
+    .empty-art{width:67px;height:67px;background:#dbf3e5;border-radius:21px;display:grid;place-items:center;font-size:30px}
+    .feed-empty h3{font-size:23px;letter-spacing:-.04em;line-height:1.2;margin:0 0 7px}
+    .feed-empty p{font-size:14px;color:var(--muted);max-width:530px;line-height:1.65;margin:0}
+    .feed-empty[hidden],.feed-items[hidden]{display:none!important}
+    .feed-items{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:17px;padding:23px}
+    .offer-card{background:#fff;border:1px solid #dce9e4;border-radius:20px;padding:22px;display:flex;flex-direction:column;gap:10px;min-width:0}
+    .offer-card .merchant{font-size:11px;color:#236f5c;letter-spacing:.1em;text-transform:uppercase;font-weight:850}
+    .offer-card h3{font-size:17px;line-height:1.32;letter-spacing:-.02em;margin:0;overflow-wrap:anywhere}
+    .offer-card .price{font-size:30px;font-weight:900;color:#0c604b;letter-spacing:-.035em}
+    .offer-card .date{font-size:11px;color:#657d7b;margin-top:auto}
+    .offer-card a{color:#052a25;background:var(--lime);text-align:center;text-decoration:none;border-radius:11px;padding:11px;font-weight:850;font-size:12px;margin-top:8px}
+    .deal-note{margin:18px 0 0;font-size:12px;color:#667d7c;line-height:1.6}
+    .why{background:#0a2730;color:#fff;position:relative;overflow:hidden}
+    .why:before{content:"";position:absolute;right:-190px;top:-300px;width:700px;height:700px;border:1px solid rgba(127,251,177,.1);border-radius:50%;pointer-events:none}
+    .why .section-label{color:var(--aqua)}
+    .why .section-heading p{color:#b8ced0}
+    .why-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+    .why-card{padding:32px 28px;border:1px solid rgba(192,243,221,.17);border-radius:22px;background:rgba(255,255,255,.038)}
+    .why-icon{width:52px;height:52px;display:grid;place-items:center;border:1px solid rgba(199,255,105,.23);background:rgba(199,255,105,.09);color:var(--lime);font-weight:850;border-radius:16px;font-size:23px}
+    .why-card h3{font-size:22px;letter-spacing:-.03em;margin:24px 0 10px}
+    .why-card p{font-size:14px;line-height:1.7;color:#b8cfce;margin:0}
+    .how{background:var(--cream)}
+    .how-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:23px;margin-top:44px}
+    .how-step{padding-top:22px;border-top:2px solid #bed3ce}
+    .step-num{display:block;font-size:14px;color:#268c72;font-weight:900;letter-spacing:.1em;margin-bottom:20px}
+    .how-step h3{margin:0 0 9px;font-size:22px;letter-spacing:-.04em}
+    .how-step p{margin:0;color:var(--muted);font-size:14px;line-height:1.7}
+    .faq{background:#fff;padding:88px 0 105px}
+    .faq-layout{display:grid;grid-template-columns:.75fr 1.25fr;gap:70px}
+    .faq-intro p{color:var(--muted);font-size:15px;max-width:320px;line-height:1.7}
+    .faq-list{border-top:1px solid var(--stroke)}
+    .faq-list details{border-bottom:1px solid var(--stroke);padding:0 2px}
+    .faq-list summary{list-style:none;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:20px;padding:21px 0;font-size:16px;font-weight:780}
+    .faq-list summary::-webkit-details-marker{display:none}
+    .faq-list summary:after{content:"+";font-size:24px;color:#247d68;font-weight:400}
+    .faq-list details[open] summary:after{content:"-"}
+    .faq-list details p{padding:0 40px 19px 0;color:var(--muted);font-size:14px;line-height:1.7;margin:0}
+    .closing{background:var(--lime);padding:85px 0;overflow:hidden}
+    .closing-row{display:flex;align-items:center;justify-content:space-between;gap:45px;position:relative}
+    .closing-row:before{content:"";position:absolute;border:1px solid rgba(8,76,55,.2);width:420px;height:420px;border-radius:50%;right:19%;top:-215px;pointer-events:none}
+    .closing h2{font-size:clamp(38px,4.1vw,58px);line-height:1.04;letter-spacing:-.06em;max-width:650px;margin:0 0 12px;color:#092a2d}
+    .closing p{margin:0;max-width:560px;color:#335a48;font-size:16px}
+    .closing .button{min-height:61px;padding:16px 25px;position:relative;white-space:nowrap}
+    footer{background:#061b22;color:#bdd0cf;padding:56px 0 28px}
+    .footer-top{display:flex;justify-content:space-between;gap:30px;align-items:start;padding-bottom:37px}
+    .footer-tag{font-size:14px;line-height:1.7;max-width:310px;margin:14px 0 0;color:#a7c0bd}
+    .footer-links{display:flex;gap:22px;flex-wrap:wrap;font-size:13px;font-weight:700}
+    .footer-links a{text-decoration:none}.footer-links a:hover{text-decoration:underline;color:var(--lime)}
+    .footer-bottom{border-top:1px solid rgba(255,255,255,.12);padding-top:23px;display:flex;justify-content:space-between;gap:22px;align-items:start;font-size:12px;color:#a8c0be}
+    .footer-bottom p{margin:0;max-width:790px;line-height:1.7}
+    .mobile-cta{display:none}
+    @media(max-width:1100px){.hero-grid{grid-template-columns:1.05fr .95fr;gap:18px}.hero h1{font-size:clamp(50px,5.7vw,67px)}.float-card.top{right:0}.float-card.bottom{left:0}.navlinks{gap:16px}}
+    @media(max-width:900px){.navlinks{display:none}.mobile-nav{display:block;position:relative;margin-left:auto}.mobile-nav summary{cursor:pointer;display:flex;align-items:center;justify-content:center;width:44px;height:44px;border:1px solid rgba(255,255,255,.26);border-radius:13px;list-style:none;font-size:22px;font-weight:500}.mobile-nav summary::-webkit-details-marker{display:none}.mobile-menu{position:absolute;right:0;top:52px;min-width:235px;background:#11333d;padding:10px;border:1px solid rgba(255,255,255,.2);border-radius:16px;box-shadow:0 18px 48px rgba(0,0,0,.28);display:grid;gap:4px}.mobile-menu a{padding:11px 12px;border-radius:9px;text-decoration:none;font-size:14px;font-weight:700}.mobile-menu a:hover{background:#21464c}.hero-grid{grid-template-columns:1fr;gap:14px;padding:70px 0 32px}.hero-copy{max-width:650px}.hero h1{max-width:750px;font-size:clamp(51px,8vw,78px)}.visual{height:380px;max-width:510px;width:100%;margin:0 auto}.radar{max-width:360px}.float-card.top{top:10px}.float-card.bottom{bottom:13px}.float-card.tiny{bottom:12px}.category-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.section-heading{align-items:start;flex-direction:column;gap:14px}.why-grid{grid-template-columns:1fr}.why-card{padding:27px}.faq-layout{grid-template-columns:1fr;gap:18px}.ribbon-row{gap:8px}.ribbon-item{font-size:11px}.footer-top{flex-wrap:wrap}}
+    @media(max-width:680px){.container{width:min(calc(100% - 34px),var(--max))}.announcement{font-size:10px}.announcement .container{gap:8px;min-height:31px}.nav{min-height:68px}.nav .nav-cta{display:none}.brand{font-size:20px}.brand-icon{width:34px;height:34px}.hero-grid{padding:52px 0 18px}.hero h1{font-size:clamp(48px,11.5vw,66px);line-height:1.045;letter-spacing:-.063em;margin:20px 0}.hero-copy{font-size:15px;line-height:1.72}.hero-actions{flex-direction:column;margin:28px 0 22px}.hero-actions .button{width:100%;min-height:53px}.hero-micro{gap:8px 12px;font-size:11px}.visual{height:315px;margin-top:8px}.radar{max-width:290px}.radar-center{width:75px;height:75px}.radar-center span:last-child{font-size:18px}.float-card{padding:11px 12px}.float-card strong{font-size:14px}.float-card small{font-size:8px}.float-card.top{top:2px}.float-card.bottom{bottom:7px}.float-card.tiny{display:none}.ribbon-row{grid-template-columns:1fr;gap:0;padding:10px 0}.ribbon-item{justify-content:start;padding:9px 0;font-size:12px}.ribbon-item:not(:last-child){border-right:0;border-bottom:1px solid rgba(255,255,255,.08)}.section{padding:74px 0}.section-heading h2,.section h2{font-size:clamp(34px,9vw,46px)}.category-grid{grid-template-columns:1fr 1fr;gap:10px}.category{min-height:190px;padding:18px;border-radius:18px}.cat-emoji{width:48px;height:48px;font-size:25px}.category h3{font-size:18px}.category p{font-size:11px}.category .cat-arrow{font-size:17px;right:16px;top:16px}.deals{padding:70px 0}.feed-empty{grid-template-columns:1fr;gap:13px;padding:27px}.feed-panel{min-height:300px}.feed-panel-head{padding:15px 20px}.feed-items{grid-template-columns:1fr;padding:14px}.why-grid{gap:12px}.how-grid{grid-template-columns:1fr;gap:27px;margin-top:30px}.faq{padding:67px 0 80px}.faq-list summary{font-size:14px}.faq-list details p{padding-right:10px}.closing{padding:64px 0 82px}.closing-row{flex-direction:column;align-items:start;gap:25px}.closing .button{width:100%}.footer-top{flex-direction:column}.footer-bottom{flex-direction:column}.mobile-cta{display:block;position:fixed;bottom:0;left:0;right:0;z-index:60;padding:9px 15px calc(9px + env(safe-area-inset-bottom));background:rgba(7,29,37,.97);border-top:1px solid rgba(199,255,105,.24);box-shadow:0 -8px 35px rgba(0,0,0,.14)}.mobile-cta .button{min-height:47px;width:100%;font-size:13px}body{padding-bottom:70px}}
+    @media(max-width:370px){.category-grid{grid-template-columns:1fr}.category{min-height:176px}.hero h1{font-size:46px}.float-card{max-width:145px}.brand{font-size:18px}}
+    @media(prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important;animation:none!important;transition:none!important}}
+  </style>
 </head>
 <body>
-<header class="topbar">
-  <div class="wrap nav">
-    <a class="brand" href="#">📡 AffareRadar Italia</a>
-    <nav class="navlinks">
-      <a href="#come-funziona">Come funziona</a>
-      <a href="#categorie">Categorie</a>
-      <a href="https://t.me/AffareRadarOfferte" target="_blank" rel="noopener">Telegram</a>
+<a class="skip" href="#contenuto">Vai al contenuto</a>
+<div class="announcement"><div class="container"><span>UN SOLO RADAR</span><span class="dot" aria-hidden="true"></span><span>OFFERTE &amp; COUPON</span><span class="dot" aria-hidden="true"></span><span>ACCESSO GRATUITO</span></div></div>
+<header class="header">
+  <div class="container nav">
+    <a class="brand" href="#inizio" aria-label="AffareRadar, torna all'inizio"><span class="brand-icon" aria-hidden="true"><i></i></span><span>Affare<strong>Radar</strong></span></a>
+    <nav class="navlinks" aria-label="Navigazione principale">
+      <a href="#categorie">Categorie</a><a href="#offerte">Offerte</a><a href="#come-funziona">Come funziona</a><a href="#faq">FAQ</a>
     </nav>
+    <a class="button button-primary nav-cta" href="https://t.me/AffareRadarOfferte" target="_blank" rel="noopener noreferrer">Vai su Telegram <span aria-hidden="true">&#8599;</span></a>
+    <details class="mobile-nav"><summary aria-label="Apri il menu di navigazione" aria-controls="mobile-menu">&#9776;</summary><nav class="mobile-menu" id="mobile-menu" aria-label="Navigazione mobile"><a href="#categorie">Categorie</a><a href="#offerte">Offerte</a><a href="#come-funziona">Come funziona</a><a href="#faq">Domande frequenti</a><a href="https://t.me/AffareRadarOfferte" target="_blank" rel="noopener noreferrer">Canale Telegram &#8599;</a></nav></details>
   </div>
 </header>
-
-<section class="hero">
-  <div class="wrap hero-grid">
-    <div>
-      <div class="eyebrow">Deal intelligence con verifica prima della pubblicazione</div>
-      <h1>Segnali utili. Controlli prima dell'invio.</h1>
-      <p>AffareRadar raccoglie segnali da più fonti, li sottopone a verifica e pubblica sul canale Telegram solo le opportunità che superano i controlli previsti dal sistema.</p>
-      <div class="hero-actions">
-        <a class="btn btn-primary" href="https://t.me/AffareRadarOfferte" target="_blank" rel="noopener">📲 Apri il canale Telegram</a>
-        <a class="btn btn-light" href="#come-funziona">Come selezioniamo i segnali</a>
+<main id="contenuto">
+  <section class="hero" id="inizio" aria-labelledby="hero-title">
+    <div class="container hero-grid">
+      <div class="hero-content">
+        <div class="eyebrow"><span class="led" aria-hidden="true"></span> IL TUO RADAR PER LE OFFERTE</div>
+        <h1 id="hero-title">Le occasioni, <span>senza cercarle ovunque.</span></h1>
+        <p class="hero-copy">Prezzi interessanti, coupon e segnalazioni da tenere d'occhio. AffareRadar seleziona le opportunit&agrave; e ti aiuta a valutarle, senza perderti tra mille pagine.</p>
+        <div class="hero-actions">
+          <a class="button button-primary" href="https://t.me/AffareRadarOfferte" target="_blank" rel="noopener noreferrer"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m21.5 3.6-3.1 16.5c-.2 1-1.1 1.4-2 1l-5.2-3.8-2.6 2.5c-.3.3-.5.4-1 .4l.4-5.4 9.8-8.8c.4-.4-.1-.6-.6-.3L5.1 13.1.7 11.7c-1-.3-1-1 .2-1.5L19.8 2.9c1-.4 1.9.2 1.7.7Z"/></svg>Entra gratis su Telegram <span aria-hidden="true">&#8599;</span></a>
+          <a class="button button-outline" href="#come-funziona">Come funziona <span aria-hidden="true">&#8595;</span></a>
+        </div>
+        <div class="hero-micro"><span><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m4 12 5 5L20 6"/></svg>Nessuna registrazione sul sito</span><span><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m4 12 5 5L20 6"/></svg>Canale pubblico gratuito</span></div>
+      </div>
+      <div class="visual" aria-hidden="true">
+        <div class="radar"><span class="radar-cross horizontal"></span><span class="radar-cross vertical"></span><span class="sweep"></span><span class="signal one"></span><span class="signal two"></span><span class="signal three"></span><div class="radar-center"><span>DEAL</span><span>RADAR</span></div></div>
+        <div class="float-card top"><small>NEL MIRINO</small><strong>Offerte <span class="accent">sotto 10 &euro;</span></strong></div>
+        <div class="float-card bottom"><small>DA VALUTARE</small><strong>Coupon &amp; promozioni</strong></div>
+        <div class="float-card tiny"><strong>SEGNALI SELEZIONATI</strong></div>
       </div>
     </div>
-    <aside class="hero-box">
-      <span class="status"><span class="dot"></span> Canale operativo</span>
-      <strong>Verifica → controllo → pubblicazione</strong>
-      <span>I dati commerciali provenienti da fonti esterne non vengono trattati come dati Amazon verificati finché il processo di verifica non è completato.</span>
-    </aside>
-  </div>
-</section>
-
-<main>
-<section class="section" id="come-funziona">
-  <div class="wrap">
-    <h2>Come funziona AffareRadar</h2>
-    <p class="section-sub">Il sistema separa il segnale iniziale dal contenuto effettivamente pubblicabile.</p>
-    <div class="flow">
-      <div class="step"><strong>1. Capture</strong>Raccoglie il segnale e la relativa provenienza.</div>
-      <div class="step"><strong>2. Quarantine</strong>Prezzi, sconti e coupon dichiarati da fonti esterne restano dati non verificati.</div>
-      <div class="step"><strong>3. Verification</strong>Il prodotto e i dati commerciali vengono controllati tramite fonti Amazon consentite quando disponibili.</div>
-      <div class="step"><strong>4. Decision</strong>Affidabilità, freschezza, policy e qualità dell'opportunità vengono valutate insieme.</div>
-      <div class="step"><strong>5. Telegram</strong>Solo i contenuti che superano i controlli possono arrivare al canale.</div>
+  </section>
+  <div class="benefit-ribbon"><div class="container ribbon-row"><div class="ribbon-item"><span class="ribbon-icon" aria-hidden="true">&#10003;</span> Selezione prima della pubblicazione</div><div class="ribbon-item"><span class="ribbon-icon" aria-hidden="true">&#9678;</span> Coupon e offerte quando disponibili</div><div class="ribbon-item"><span class="ribbon-icon" aria-hidden="true">&#8599;</span> Segnalazioni direttamente su Telegram</div></div></div>
+  <section class="section categories" id="categorie" aria-labelledby="cat-title">
+    <div class="container">
+      <div class="section-heading"><div><span class="section-label">Esplora le categorie</span><h2 id="cat-title">Ogni occasione<br>ha il suo radar.</h2></div><p>Dai piccoli accessori alla tecnologia: queste sono alcune delle categorie che AffareRadar pu&ograve; seguire quando emergono opportunit&agrave; pubblicabili.</p></div>
+      <div class="category-grid">
+        <article class="category"><div class="cat-emoji" aria-hidden="true">&#128187;</div><div><h3>Tech &amp; gadget</h3><p>Dispositivi, accessori e informatica.</p></div></article>
+        <article class="category"><div class="cat-emoji" aria-hidden="true">&#127968;</div><div><h3>Casa &amp; smart</h3><p>Idee utili per la vita quotidiana.</p></div></article>
+        <article class="category"><div class="cat-emoji" aria-hidden="true">&#128176;</div><div><h3>Sotto 10 &euro;</h3><p>Piccole spese, occasioni da valutare.</p></div></article>
+        <article class="category"><div class="cat-emoji" aria-hidden="true">&#127918;</div><div><h3>Gaming</h3><p>Periferiche, giochi e accessori.</p></div></article>
+        <article class="category"><div class="cat-emoji" aria-hidden="true">&#128736;</div><div><h3>Fai da te</h3><p>Attrezzi e accessori selezionati.</p></div></article>
+        <article class="category"><div class="cat-emoji" aria-hidden="true">&#10024;</div><div><h3>Coupon &amp; extra</h3><p>Promozioni con condizioni da verificare.</p></div></article>
+      </div>
     </div>
-  </div>
-</section>
-
-<section class="section" id="categorie" style="background:#fff">
-  <div class="wrap">
-    <h2>Categorie seguite</h2>
-    <p class="section-sub">La copertura può cambiare in funzione delle opportunità rilevate e verificabili.</p>
-    <div class="grid">
-      <div class="card"><div class="icon">💻</div><h3>Tecnologia & Informatica</h3><p>Accessori, dispositivi, storage, networking e prodotti consumer tech.</p></div>
-      <div class="card"><div class="icon">🏠</div><h3>Casa & Smart Home</h3><p>Dispositivi connessi, piccoli elettrodomestici e prodotti per la casa.</p></div>
-      <div class="card"><div class="icon">✨</div><h3>Cura personale</h3><p>Beauty, grooming e prodotti per la cura quotidiana quando idonei alla pubblicazione.</p></div>
-      <div class="card"><div class="icon">🎮</div><h3>Gaming</h3><p>Periferiche, accessori e hardware collegato al mondo gaming.</p></div>
-      <div class="card"><div class="icon">🔧</div><h3>Fai da te</h3><p>Utensili e accessori compatibili con i criteri di selezione del sistema.</p></div>
-      <div class="card"><div class="icon">➕</div><h3>Altre opportunità</h3><p>Il motore può includere ulteriori categorie quando il segnale supera i controlli.</p></div>
+  </section>
+  <section class="section deals" id="offerte" aria-labelledby="deals-title">
+    <div class="container">
+      <div class="section-heading"><div><span class="section-label">Vetrina delle occasioni</span><h2 id="deals-title">Solo offerte che<br>possiamo mostrare.</h2></div><p>Niente prezzi di fantasia: questa vetrina mostra offerte soltanto se presenti in un feed autorizzato, approvato e ancora aggiornato.</p></div>
+      <div class="feed-panel"><div class="feed-panel-head"><span class="feed-indicator">Vetrina verificata</span><span class="feed-caption">Prezzi e disponibilit&agrave; possono cambiare</span></div><div class="feed-empty" id="feed-empty" role="status" aria-live="polite"><div class="empty-art" aria-hidden="true">&#128225;</div><div><h3>Le segnalazioni continuano su Telegram.</h3><p id="feed-message">In questo momento non ci sono offerte aggiornate nel feed pubblico del sito. Per gli avvisi disponibili, consulta il canale AffareRadar.</p></div><a class="button button-dark" href="https://t.me/AffareRadarOfferte" target="_blank" rel="noopener noreferrer">Apri il canale <span aria-hidden="true">&#8599;</span></a></div><div class="feed-items" id="feed-items" hidden></div></div>
+      <p class="deal-note">In qualit&agrave; di Affiliato Amazon, AffareRadar pu&ograve; ricevere un guadagno dagli acquisti idonei. Prezzi, coupon e disponibilit&agrave; effettivi sono quelli indicati dal venditore al momento della consultazione o dell'acquisto.</p>
     </div>
-
-    <div class="notice">
-      In qualità di Affiliato Amazon, AffareRadar può ricevere un guadagno dagli acquisti idonei. Prezzi, coupon, disponibilità e condizioni validi sono quelli mostrati su Amazon al momento della consultazione o dell'acquisto.
-    </div>
-  </div>
-</section>
+  </section>
+  <section class="section why" id="vantaggi" aria-labelledby="why-title"><div class="container"><div class="section-heading"><div><span class="section-label">Meno rumore, pi&ugrave; chiarezza</span><h2 id="why-title">Un radar utile.<br>Non l'ennesimo elenco.</h2></div><p>Il valore di una segnalazione non sta solo in uno sconto grande, ma nel poter capire che cosa viene proposto.</p></div><div class="why-grid">
+    <article class="why-card"><div class="why-icon" aria-hidden="true">&#9678;</div><h3>Segnali selezionati</h3><p>Le segnalazioni vengono valutate prima della pubblicazione. Se i dati non sono sufficienti, non li presentiamo come verificati.</p></article>
+    <article class="why-card"><div class="why-icon" aria-hidden="true">&#8364;</div><h3>Prezzi in chiaro</h3><p>Quando disponibili e controllati, mostriamo prezzo, coupon e condizioni utili per una scelta pi&ugrave; consapevole.</p></article>
+    <article class="why-card"><div class="why-icon" aria-hidden="true">&#8599;</div><h3>Un canale, tutto qui</h3><p>Non serve aprire un account sul sito: scegli se seguire gratuitamente le segnalazioni sul canale Telegram.</p></article>
+  </div></div></section>
+  <section class="section how" id="come-funziona" aria-labelledby="how-title"><div class="container"><span class="section-label">Semplice da usare</span><h2 id="how-title">Tre passaggi.<br>Il resto lo fa il radar.</h2><div class="how-grid"><article class="how-step"><span class="step-num">01 / SCOPERTA</span><h3>Raccogliamo i segnali</h3><p>Il sistema individua possibili occasioni da fonti disponibili e autorizzate.</p></article><article class="how-step"><span class="step-num">02 / VERIFICA</span><h3>Controlliamo i dati</h3><p>Prezzi, condizioni e attendibilit&agrave; vengono valutati prima che una segnalazione sia pubblicabile.</p></article><article class="how-step"><span class="step-num">03 / CANALE</span><h3>Decidi se approfittarne</h3><p>Le occasioni approvate possono comparire su Telegram. Controlla sempre le condizioni sul negozio prima di acquistare.</p></article></div></div></section>
+  <section class="faq" id="faq" aria-labelledby="faq-title"><div class="container faq-layout"><div class="faq-intro"><span class="section-label">Domande frequenti</span><h2 id="faq-title">Tutto chiaro,<br>da subito.</h2><p>Le risposte essenziali prima di entrare sul canale.</p></div><div class="faq-list"><details><summary>Il canale Telegram &egrave; gratuito?</summary><p>S&igrave;. Puoi aprire il canale pubblico senza registrarti su questo sito. Per seguire il canale &egrave; necessario utilizzare Telegram.</p></details><details><summary>Le offerte sono sempre disponibili?</summary><p>No. Prezzi, coupon e disponibilit&agrave; possono cambiare rapidamente. Verifica sempre l'offerta direttamente sul sito del venditore prima dell'acquisto.</p></details><details><summary>AffareRadar vende direttamente i prodotti?</summary><p>No. AffareRadar segnala opportunit&agrave; e pu&ograve; utilizzare collegamenti affiliati. Gli acquisti e le relative condizioni sono gestiti dal negozio di destinazione.</p></details><details><summary>Come vengono selezionate le segnalazioni?</summary><p>Il progetto prevede controlli su provenienza, freschezza e condizioni commerciali prima della pubblicazione. Una segnalazione non verificabile non deve essere presentata come offerta confermata.</p></details></div></div></section>
+  <section class="closing" aria-labelledby="closing-title"><div class="container closing-row"><div><h2 id="closing-title">Hai il radar.<br>Ora accendilo.</h2><p>Scopri le segnalazioni di AffareRadar su Telegram. L'accesso &egrave; gratuito e puoi decidere in autonomia se seguire il canale.</p></div><a class="button button-dark" href="https://t.me/AffareRadarOfferte" target="_blank" rel="noopener noreferrer">Apri AffareRadar su Telegram <span aria-hidden="true">&#8599;</span></a></div></section>
 </main>
-
-<footer>
-  <div class="wrap footer-grid">
-    <div><strong>AffareRadar Italia</strong><br>Deal intelligence orientata alla verifica e alla qualità del segnale.</div>
-    <div>Le offerte operative vengono pubblicate sul canale Telegram ufficiale.</div>
-  </div>
-</footer>
+<footer><div class="container"><div class="footer-top"><div><a class="brand" href="#inizio"><span class="brand-icon" aria-hidden="true"><i></i></span><span>Affare<strong>Radar</strong></span></a><p class="footer-tag">Un modo pi&ugrave; semplice per orientarti tra segnalazioni, coupon e occasioni.</p></div><nav class="footer-links" aria-label="Link utili"><a href="#categorie">Categorie</a><a href="#offerte">Offerte</a><a href="#faq">FAQ</a><a href="https://t.me/AffareRadarOfferte" target="_blank" rel="noopener noreferrer">Telegram</a></nav></div><div class="footer-bottom"><p>Trasparenza: in qualit&agrave; di Affiliato Amazon, AffareRadar pu&ograve; ricevere un guadagno dagli acquisti idonei. Il sito non &egrave; gestito n&eacute; sponsorizzato da Amazon. I marchi appartengono ai rispettivi titolari.</p><p>&copy; AffareRadar Italia</p></div></div></footer>
+<div class="mobile-cta"><a class="button button-primary" href="https://t.me/AffareRadarOfferte" target="_blank" rel="noopener noreferrer">Entra gratis nel canale Telegram <span aria-hidden="true">&#8599;</span></a></div>
+<script>
+(function(){
+  'use strict';
+  // Read-only public feed; approval must also be enforced by the trusted feed producer.
+  var empty=document.getElementById('feed-empty');
+  var message=document.getElementById('feed-message');
+  var grid=document.getElementById('feed-items');
+  var hosts=new Set(['amazon.it','www.amazon.it']);
+  var eur=new Intl.NumberFormat('it-IT',{style:'currency',currency:'EUR'});
+  function validOffer(o){
+    if(!o||typeof o!=='object'||o.status!=='approved'||o.source_authorized!==true||o.rights_verified!==true)return null;
+    if(typeof o.title!=='string'||o.title.trim().length<3||o.title.length>130)return null;
+    if(typeof o.merchant!=='string'||!o.merchant.trim()||o.merchant.length>70)return null;
+    if(typeof o.price_eur!=='number'||!Number.isFinite(o.price_eur)||o.price_eur<=0||o.price_eur>100000)return null;
+    var checked=Date.parse(o.verified_at),end=Date.parse(o.expires_at),now=Date.now();
+    if(!Number.isFinite(checked)||!Number.isFinite(end)||checked>now||now-checked>7200000||end<=now||end<=checked)return null;
+    try{var u=new URL(o.url);if(u.protocol!=='https:'||u.username||u.password||!hosts.has(u.hostname.toLowerCase()))return null;
+      return {title:o.title.trim(),merchant:o.merchant.trim(),price:o.price_eur,checked:checked,url:u.href};
+    }catch(e){return null;}
+  }
+  function card(o){
+    var el=document.createElement('article');el.className='offer-card';
+    var m=document.createElement('div');m.className='merchant';m.textContent=o.merchant;
+    var h=document.createElement('h3');h.textContent=o.title;
+    var p=document.createElement('div');p.className='price';p.textContent=eur.format(o.price);
+    var t=document.createElement('div');t.className='date';t.textContent='Prezzo controllato: '+new Date(o.checked).toLocaleString('it-IT',{dateStyle:'short',timeStyle:'short'});
+    var a=document.createElement('a');a.textContent='Verifica sul negozio';a.href=o.url;a.target='_blank';a.rel='noopener noreferrer sponsored';
+    el.append(m,h,p,t,a);return el;
+  }
+  fetch('entra/offerte.json',{cache:'no-store',credentials:'omit'}).then(function(r){if(!r.ok)throw new Error('feed unavailable');return r.json()}).then(function(j){
+    if(!j||j.schema_version!==1||!Array.isArray(j.offers))throw new Error('bad schema');
+    var offers=j.offers.map(validOffer).filter(Boolean).slice(0,6);
+    if(offers.length){grid.replaceChildren.apply(grid,offers.map(card));grid.hidden=false;empty.hidden=true;}
+    else{message.textContent='Nessuna offerta approvata e aggiornata nel feed pubblico del sito in questo momento. Sul canale Telegram trovi le segnalazioni disponibili.';}
+  }).catch(function(){message.textContent='La vetrina del sito non &egrave; ancora collegata a un feed aggiornato. Il canale Telegram &egrave; disponibile tramite il pulsante qui accanto.'.replaceAll('&egrave;','\u00e8');});
+  document.querySelectorAll('.mobile-menu a').forEach(function(a){a.addEventListener('click',function(){var details=document.querySelector('.mobile-nav');if(details)details.open=false;});});
+})();
+</script>
 </body>
 </html>
