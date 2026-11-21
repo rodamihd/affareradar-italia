@@ -1,0 +1,64 @@
+name: AgentOS Governance Gate Tests
+on:
+  pull_request:
+    paths:
+      - "lib/agentos-governance-gate.js"
+      - "lib/agentos-governance-gate-selftest.js"
+      - "lib/agentos-approval-verifier.js"
+      - "lib/agentos-approval-verifier-selftest.js"
+      - "lib/agentos-approval-redis-store.js"
+      - "lib/agentos-approval-redis-store-selftest.js"
+      - "lib/agentos-staging-db-readiness.js"
+      - "lib/agentos-staging-db-readiness-selftest.js"
+      - "lib/agentos-private-reviewer-grant-lookup.js"
+      - "lib/agentos-private-reviewer-grant-lookup-selftest.js"
+      - "lib/agentos-supabase-reviewer-composition.js"
+      - "lib/agentos-supabase-reviewer-composition-selftest.js"
+      - "lib/agentos-supabase-session-verifier.js"
+      - "lib/agentos-supabase-session-verifier-selftest.js"
+      - "lib/agentos-trusted-reviewer-adapter.js"
+      - "lib/agentos-trusted-reviewer-adapter-selftest.js"
+      - "lib/agentos-publication-binding.js"
+      - "lib/agentos-approval-issuer.js"
+      - "lib/agentos-approval-issuer-selftest.js"
+      - "lib/agentos-approval-cycle-selftest.js"
+      - "lib/agentos-approval-redis-integration-test.js"
+      - "lib/agentos-auto-publish-http-rejection-selftest.js"
+      - "api/auto-publish.js"
+      - ".github/workflows/agentos-governance-gate.yml"
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: node --check lib/agentos-governance-gate.js
+      - run: node --check api/auto-publish.js
+      - run: node --input-type=module -e 'import fs from "node:fs"; import assert from "node:assert/strict"; const s=fs.readFileSync("api/auto-publish.js","utf8"); const auth=s.indexOf("auth !== secret"); const gate=s.indexOf("AGENTOS_GOVERNANCE_ENFORCE"); assert.ok(auth>0 && gate>auth, "publisher authentication must precede governance");'
+      - run: node lib/agentos-governance-gate-selftest.js
+      - run: node lib/agentos-approval-verifier-selftest.js
+      - run: node lib/agentos-approval-redis-store-selftest.js
+      - run: node lib/agentos-approval-issuer-selftest.js
+      - run: node lib/agentos-approval-cycle-selftest.js
+      - run: sudo apt-get update -qq && sudo apt-get install -y redis-tools
+      - run: redis-cli -h 127.0.0.1 -p 6379 ping
+      - run: node lib/agentos-approval-redis-integration-test.js
+      - run: node lib/agentos-auto-publish-http-rejection-selftest.js
+      - run: node lib/agentos-trusted-reviewer-adapter-selftest.js
+      - run: node lib/agentos-supabase-session-verifier-selftest.js
+      - run: node lib/agentos-supabase-reviewer-composition-selftest.js
+      - run: node lib/agentos-private-reviewer-grant-lookup-selftest.js
+      - run: node lib/agentos-staging-db-readiness-selftest.js
