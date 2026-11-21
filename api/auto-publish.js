@@ -32,6 +32,7 @@ import {
 import crypto from "node:crypto";
 import { startRuntimeObservation, runtimeSuccess, runtimeFailure } from "../lib/runtime-observability.js";
 import { redisConfig, redisCommand } from "../lib/redis-rest.js";
+import { enqueuePublicationQueue } from "../lib/queue-enqueue.mjs";
 import { classifyDecisionEvent, recordDecisionEvent, recordPublicationOutcome } from "../lib/decision-outcome-registry.js";
 import { enqueueQuantoItaliaDistribution } from "../lib/distribution-engine.js";
 import { normalizeOpportunity } from "../lib/universal-opportunity.js";
@@ -190,29 +191,7 @@ function evaluateAntiSpam(state, body, now) {
 }
 
 async function enqueueDeal(body, dealId, dueAt, reason) {
-  const queueKey = "affareradar:queue";
-  const itemKey = `affareradar:queue:item:${dealId}`;
-  const payload = {
-    body,
-    dealId,
-    dueAt,
-    queuedAt:nowIso(),
-    reason,
-    attempts:Number(body.__queueAttempts || 0)
-  };
-
-  try {
-    const cfg = redisConfig();
-    if (cfg) {
-      await redisCommand("SET", itemKey, JSON.stringify(payload), "EX", 86400);
-      await redisCommand("ZADD", queueKey, String(dueAt), dealId);
-      return { queued:true, mode:"persistent_upstash_redis", dueAt:nowIso(dueAt) };
-    }
-  } catch {}
-
-  if (!memory.queue) memory.queue = new Map();
-  memory.queue.set(dealId, payload);
-  return { queued:true, mode:"best_effort_in_memory", dueAt:nowIso(dueAt) };
+  return enqueuePublicationQueue({body, dealId, dueAt, reason});
 }
 
 function computeQueueDueAt(antiSpamState, antiSpam, now) {
@@ -950,7 +929,27 @@ export default async function handler(req, res) {
 
   if (!antiSpam.passed) {
     const dueAt = computeQueueDueAt(antiSpamState, antiSpam, now);
+    if (body.__fromQueue === true) {
+      // Queue owns the delivery journal; do not attempt a second enqueue while
+      // the original item is leased. The caller will atomically reschedule it.
+      return res.status(200).json({
+        ok:true,
+        published:false,
+        decision:"deferred",
+        reason:"anti_spam",
+        nextAttemptAt:nowIso(dueAt),
+        antiSpam
+      });
+    }
     const queue = await enqueueDeal(body, dealId, dueAt, "anti_spam");
+    if (!queue.queued) {
+      await trackMetric("queue_unavailable", body, { queueReason:queue.reason });
+      return res.status(503).json({
+        ok:false, published:false, decision:"blocked",
+        reason:"persistent_publication_queue_unavailable",
+        queue:{queued:false, reason:queue.reason}
+      });
+    }
     await trackMetric("queued", body, { queueReason:antiSpam.failures, scheduledFor:nowIso(dueAt) });
 
     const queuedLifecycle = {

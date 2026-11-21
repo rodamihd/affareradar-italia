@@ -1,0 +1,39 @@
+name: Upstash staging smoke guard (offline only)
+on:
+  pull_request:
+    paths:
+      - 'scripts/upstash-staging-smoke.mjs'
+      - '.github/workflows/affareradar-upstash-staging-smoke-gate.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  offline-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax validation (no credentials and no network)
+        run: node --check scripts/upstash-staging-smoke.mjs
+      - name: Assert staging script fails closed without dedicated credentials
+        env:
+          AFFARERADAR_UPSTASH_STAGING_REST_URL: ''
+          AFFARERADAR_UPSTASH_STAGING_REST_TOKEN: ''
+          AFFARERADAR_UPSTASH_STAGING_RESOURCE_ID: ''
+          AFFARERADAR_UPSTASH_PRODUCTION_REST_URL: ''
+          AFFARERADAR_UPSTASH_PRODUCTION_RESOURCE_ID: ''
+        run: |
+          set +e
+          node --experimental-default-type=module scripts/upstash-staging-smoke.mjs --confirm-isolated-staging > outcome.txt 2>&1
+          status=$?
+          set -e
+          if [ "$status" -ne 2 ] || ! grep -q '^BLOCKED:' outcome.txt; then
+            echo "Staging-only preflight did not fail closed"
+            exit 1
+          fi
+          echo "PASS: absent dedicated staging credentials prevent any network request"
