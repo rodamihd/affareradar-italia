@@ -1,0 +1,32 @@
+name: AgentOS 33.10 DAG profile regression
+
+on:
+  pull_request:
+    paths:
+      - "lib/agentos-dag.js"
+      - "lib/agentos-selftest.js"
+      - "lib/agentos-33_10-profile.js"
+      - ".github/workflows/agentos-dag-profile-regression.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dag-profile:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Syntax check
+        run: |
+          node --check lib/agentos-dag.js
+          node --check lib/agentos-selftest.js
+          node --check lib/agentos-33_10-profile.js
+      - name: Synthetic AgentOS self-tests
+        run: |
+          node --input-type=module -e 'import { runAgentOsSelfTest } from "./lib/agentos-selftest.js"; const r = runAgentOsSelfTest(); console.log(JSON.stringify({total:r.total, passed:r.passedCount, failed:r.failed})); if (!r.passed) process.exit(1);'
