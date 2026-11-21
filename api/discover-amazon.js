@@ -6,6 +6,7 @@ import { extractAsinFromUrl } from "../lib/verification-orchestrator.js";
 import { sourceReputationKeys, applySourceOutcome } from "../lib/source-reputation.js";
 import { providerHealthDefaults, providerCanAttempt, recordProviderSuccessState, recordProviderFailureState } from "../lib/provider-health.js";
 import crypto from "node:crypto";
+import { compareDealsUnderTen } from "../lib/under10-priority.js";
 import { startRuntimeObservation, runtimeSuccess, runtimeFailure } from "../lib/runtime-observability.js";
 import { redisConfig, redisCommand } from "../lib/redis-rest.js";
 import { runAgentOsSelfTest } from "../lib/agentos-selftest.js";
@@ -231,14 +232,14 @@ function searchTerms() {
     return raw.split("|").map(x => x.trim()).filter(Boolean).slice(0, 3);
   }
   return [
-    "offerta elettronica",
-    "offerta casa",
-    "offerta informatica"
+    "accessori smartphone",
+    "prodotti pulizia casa",
+    "cura persona"
   ];
 }
 
 async function searchItems(token, cfg, keywords) {
-  const minSavingPercent = Math.max(1, Math.min(95, Number(process.env.AMAZON_DISCOVERY_MIN_SAVING_PERCENT || 25)));
+  const minSavingPercent = Math.max(1, Math.min(95, Number(process.env.AMAZON_DISCOVERY_MIN_SAVING_PERCENT || 15)));
   const r = await fetch(`${API_BASE}/searchItems`, {
     method:"POST",
     headers:{
@@ -765,13 +766,13 @@ export default async function handler(req, res) {
 
     const unique = [];
     const seen = new Set();
-    for (const deal of discovered.sort((a,b) => b.dealScore - a.dealScore)) {
+    for (const deal of discovered.sort(compareDealsUnderTen)) {
       if (seen.has(deal.asin)) continue;
       seen.add(deal.asin);
       unique.push(deal);
     }
 
-    const maxCandidates = Math.max(1, Math.min(10, Number(process.env.AMAZON_DISCOVERY_MAX_CANDIDATES || 5)));
+    const maxCandidates = Math.max(1, Math.min(10, Number(process.env.AMAZON_DISCOVERY_MAX_CANDIDATES || 8)));
     for (const deal of unique.slice(0, maxCandidates)) {
       const dag = await createAgentOsDagForVerifiedDeal(deal);
       const agentOsAdvance = dag

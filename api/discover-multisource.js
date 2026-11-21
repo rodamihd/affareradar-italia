@@ -1,6 +1,7 @@
 // PRIME_EVENT_ENV_REFRESH_V2
 // PRIME_EVENT_ENV_REFRESH_V1
 import crypto from "node:crypto";
+import { compareDealsUnderTen, underTenPriority } from "../lib/under10-priority.js";
 import { amazonAgentUserAgent, evaluateProductEligibility, amazonPriceDisplayAllowed, amazonPromotionDisplayAllowed } from "../lib/amazon-compliance.js";
 import { agentOsEvent, universalEntityId } from "../lib/agentos-adapter.js";
 import { buildSignalQuarantine, extractAsinFromAmazonUrl } from "../lib/signal-quarantine.js";
@@ -953,7 +954,7 @@ export default async function handler(req, res) {
   const resolutionLimit = Math.max(12, Math.min(60, Number(process.env.MULTISOURCE_RESOLUTION_LIMIT || 40)));
 
   const resolutionCandidates = candidates
-    .sort((a,b) => Number(b.dealScore || 0) - Number(a.dealScore || 0))
+    .sort(compareDealsUnderTen)
     .slice(0, resolutionLimit);
   const resolutionConcurrency = Math.max(2, Math.min(8, Number(process.env.MULTISOURCE_RESOLUTION_CONCURRENCY || 5)));
   const resolvedCandidates = await mapWithConcurrency(
@@ -1051,12 +1052,13 @@ export default async function handler(req, res) {
       }
     };
   }).sort((a,b) =>
+    underTenPriority(b) - underTenPriority(a) ||
     Number(b.crossSourceConsensus?.corroborated === true) - Number(a.crossSourceConsensus?.corroborated === true) ||
     Number(b.crossSourceConsensus?.sourceCount || 1) - Number(a.crossSourceConsensus?.sourceCount || 1) ||
     Number(b.dealScore || 0) - Number(a.dealScore || 0)
   );
 
-  const maxCandidates = Math.max(1, Math.min(12, Number(process.env.MULTISOURCE_MAX_CANDIDATES || 6)));
+  const maxCandidates = Math.max(1, Math.min(12, Number(process.env.MULTISOURCE_MAX_CANDIDATES || 10)));
   const results = [];
 
   for (const deal of unique.slice(0, maxCandidates)) {
