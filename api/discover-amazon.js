@@ -1,3 +1,4 @@
+import { attestAmazonApiResult } from "../lib/amazon-verification-attestation.js";
 import { amazonAgentUserAgent } from "../lib/amazon-compliance.js";
 import { mergeVerifiedAmazonData } from "../lib/amazon-verification-broker.js";
 import { agentOsEvent } from "../lib/agentos-adapter.js";
@@ -620,6 +621,7 @@ async function processVerificationQueue(req, token, cfg, paCfg) {
         continue;
       }
 
+      verifiedDeal.amazonVerificationAttestation = attestAmazonApiResult(verifiedDeal);
       const merged = mergeVerifiedAmazonData(queued.body, verifiedDeal);
       merged.verificationQueueDealId = dealId;
       merged.verificationResolvedAt = new Date().toISOString();

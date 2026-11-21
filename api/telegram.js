@@ -1,3 +1,4 @@
+import { evaluateAmazonVerification } from "../lib/amazon-verification-broker.js";
 import { attributionMeta, validateAffiliateLink } from "../lib/affiliate-links.js";
 import { sanitizeForAmazonPublication } from "../lib/amazon-compliance.js";
 import { buildTrackedRedirect } from "../lib/attribution.js";
@@ -13,7 +14,7 @@ function currentCampaignSlot() {
 }
 
 export default async function handler(req, res) {
-  if (req.method === "GET" && process.env.AFFARERADAR_TEST_MESSAGE_ENABLED === "true" && String(req.query?.systemTest || "") === "1") {
+  if (req.method === "GET" && process.env.NODE_ENV !== "production" && process.env.AFFARERADAR_TEST_MESSAGE_ENABLED === "true" && String(req.query?.systemTest || "") === "1" && process.env.PUBLISH_SECRET && req.headers["x-affareradar-secret"] === process.env.PUBLISH_SECRET) {
     const token = process.env.TELEGRAM_BOT_TOKEN;
     const channelId = process.env.TELEGRAM_CHANNEL_ID || process.env.TELEGRAM_CHANNEL_USERNAME || process.env.TELEGRAM_CHAT_ID;
     if (!token || !channelId) {
@@ -78,6 +79,20 @@ export default async function handler(req, res) {
     body.sourceVerified === true &&
     Boolean(asin) &&
     body.commercialClaimsSuppressed === true;
+
+  // Fail closed until reward and priceless flows have separate trusted approval evidence.
+  // Caller-supplied approval booleans are not sufficient at the final egress.
+  if (isReward || pricelessSignal || body.pricelessSignal === true) {
+    return res.status(422).json({
+      ok:false,
+      error:"special_publication_review_required",
+      kind:isReward ? "reward" : "priceless_signal"
+    });
+  }
+
+  if (!isReward && !pricelessSignal && !evaluateAmazonVerification(body, Date.now()).publishableCommercialData) {
+    return res.status(422).json({ ok:false, error:"amazon_attestation_required" });
+  }
 
   if (!isReward && !pricelessSignal) {
     const completePricing = Boolean(price && oldPrice && discount);
