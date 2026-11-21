@@ -7,6 +7,7 @@ on:
       - "lib/pre-publish-validator.js"
       - "lib/pre-publish-validator-selftest.js"
       - ".github/workflows/prepublish-validator.yml"
+      - "tests/auto-publish-isolated-selftest.mjs"
   workflow_dispatch:
 
 jobs:
@@ -29,3 +30,6 @@ jobs:
 
       - name: Run validator self-test
         run: node lib/pre-publish-validator-selftest.js
+
+      - name: Run isolated endpoint guard test
+        run: node --experimental-vm-modules tests/auto-publish-isolated-selftest.mjs
