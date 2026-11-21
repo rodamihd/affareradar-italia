@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentos.local/contracts/verified-evidence-v1.schema.json",
+  "title": "AgentOS Verified Evidence Contract v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "evidence_contract",
+    "evidence_hash_version",
+    "evidence_hash_algorithm",
+    "evidence_canonicalization",
+    "evidence_hash",
+    "vertical",
+    "decision_id",
+    "outcome_id",
+    "source",
+    "mode"
+  ],
+  "properties": {
+    "evidence_contract": {
+      "const": "agentos.verified_evidence.v1"
+    },
+    "evidence_hash_version": {
+      "const": "2"
+    },
+    "evidence_hash_algorithm": {
+      "const": "sha256"
+    },
+    "evidence_canonicalization": {
+      "const": "agentos-json-c14n-v1"
+    },
+    "evidence_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "vertical": {
+      "type": "string",
+      "minLength": 1
+    },
+    "decision_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "outcome_id": {
+      "type": ["string", "null"]
+    },
+    "source": {
+      "type": "string",
+      "minLength": 1
+    },
+    "mode": {
+      "enum": ["shadow", "contract_only", "live_real", "oos", "backtest", "replay"]
+    }
+  }
+}
