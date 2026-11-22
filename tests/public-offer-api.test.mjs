@@ -12,7 +12,7 @@ let saved=[],commands=[],reviews=new Map(),priceProofs=new Map();
 const {publicKey,privateKey}=crypto.generateKeyPairSync('ed25519');
 const publicPem=publicKey.export({type:'spki',format:'pem'});
 function signedProof(offer) {
-  const asin=new URL(offer.url).pathname.match(/\\/(?:dp|gp\\/product)\\/([A-Z0-9]{10})/i)?.[1]?.toUpperCase();
+  const asin=new URL(offer.url).pathname.split('/').filter(Boolean).at(-1)?.toUpperCase();
   const claims={schema_version:1,issuer:'affareradar_creators_verifier_it_v1',
     source:'amazon_creators_api_getitems_offersv2',marketplace:'www.amazon.it',
     asin,offer_digest:offerEvidenceDigest(offer),currency:'EUR',
