@@ -9,6 +9,7 @@ on:
       - "lib/public-offer-validation.js"
       - "lib/public-offers-handler.js"
       - "lib/storefront-evidence-gate.js"
+      - "lib/creators-price-attestation.js"
       - "lib/pre-publish-validator.js"
       - "lib/pre-publish-validator-selftest.js"
       - "tests/*.test.mjs"
@@ -41,9 +42,10 @@ jobs:
           node --check lib/public-offer-validation.js
           node --check lib/public-offers-handler.js
           node --check lib/storefront-evidence-gate.js
+          node --check lib/creators-price-attestation.js
 
       - name: Run legacy pre-publish validator
         run: node lib/pre-publish-validator-selftest.js
 
       - name: Run new storefront and Top 5 safety tests
-        run: node --test tests/public-offers.test.mjs tests/public-offer-api.test.mjs tests/top5-eligibility.test.mjs tests/top5-handler-mock.test.mjs
+        run: node --test tests/public-offers.test.mjs tests/public-offer-api.test.mjs tests/top5-eligibility.test.mjs tests/top5-handler-mock.test.mjs tests/creators-price-attestation.test.mjs
