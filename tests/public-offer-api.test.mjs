@@ -2,12 +2,27 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { handlePublicOffers } from '../lib/public-offers-handler.js';
 import { offerEvidenceDigest, storefrontEvidenceKey } from '../lib/storefront-evidence-gate.js';
+import { storefrontPriceProofKey, canonicalPriceAttestation } from '../lib/creators-price-attestation.js';
+import crypto from 'node:crypto';
 
 const originalFetch=globalThis.fetch;
-const names=['UPSTASH_REDIS_REST_URL','UPSTASH_REDIS_REST_TOKEN','PUBLISH_SECRET','STOREFRONT_APPROVAL_SECRET','VERCEL_ENV','AFFARERADAR_STOREFRONT_INGEST_ENABLED'];
+const names=['UPSTASH_REDIS_REST_URL','UPSTASH_REDIS_REST_TOKEN','PUBLISH_SECRET','STOREFRONT_APPROVAL_SECRET','VERCEL_ENV','AFFARERADAR_STOREFRONT_INGEST_ENABLED','AFFARERADAR_CREATORS_PRICE_PUBLIC_KEY_PEM'];
 const originalEnv=Object.fromEntries(names.map(n=>[n,process.env[n]]));
-let saved=[],commands=[],reviews=new Map();
+let saved=[],commands=[],reviews=new Map(),priceProofs=new Map();
+const {publicKey,privateKey}=crypto.generateKeyPairSync('ed25519');
+const publicPem=publicKey.export({type:'spki',format:'pem'});
+function signedProof(offer) {
+  const asin=new URL(offer.url).pathname.match(/\\/(?:dp|gp\\/product)\\/([A-Z0-9]{10})/i)?.[1]?.toUpperCase();
+  const claims={schema_version:1,issuer:'affareradar_creators_verifier_it_v1',
+    source:'amazon_creators_api_getitems_offersv2',marketplace:'www.amazon.it',
+    asin,offer_digest:offerEvidenceDigest(offer),currency:'EUR',
+    price_cents:Math.round(offer.price_eur*100),availability:'IN_STOCK',
+    observed_at:offer.verified_at,retrieval_reference:'fixture_retrieval_001',
+    license_review_reference:'fixture_license_001'};
+  return JSON.stringify({schema_version:1,claims,signature:crypto.sign(null,canonicalPriceAttestation(claims),privateKey).toString('base64url')});
+}
 function addTrustedReview(offer, overrides={}) {
+  priceProofs.set(storefrontPriceProofKey(offer.review_reference),signedProof(offer));
   reviews.set(storefrontEvidenceKey(offer.review_reference), JSON.stringify({
     schema_version:1,review_reference:offer.review_reference,decision:'APPROVED',marketplace:'IT',
     offer_digest:offerEvidenceDigest(offer),
@@ -36,7 +51,8 @@ function response() {
 }
 function request(method,opts={}) {return {method,headers:{},body:{},query:{},...opts};}
 function setup() {
-  saved=[];commands=[];reviews=new Map();
+  saved=[];commands=[];reviews=new Map();priceProofs=new Map();
+  process.env.AFFARERADAR_CREATORS_PRICE_PUBLIC_KEY_PEM=publicPem;
   process.env.VERCEL_ENV='production';
   process.env.AFFARERADAR_STOREFRONT_INGEST_ENABLED='true';
   process.env.UPSTASH_REDIS_REST_URL='https://synthetic-redis.invalid';
@@ -49,7 +65,7 @@ function setup() {
     commands.push(op);
     let result;
     if(op==='LRANGE') result=saved.slice(Number(args[1]),Number(args[2])+1);
-    else if(op==='GET') result=reviews.get(args[0])||null;
+    else if(op==='GET') result=reviews.get(args[0])||priceProofs.get(args[0])||null;
     else if(op==='LPUSH'){saved.unshift(args[1]);result=saved.length;}
     else if(op==='LTRIM'){saved=saved.slice(0,100);result='OK';}
     else if(op==='EXPIRE') result=1;
@@ -86,7 +102,7 @@ test('POST and GET return one reviewed item without review reference',async()=>{
   assert.equal(g.code,200);assert.equal(g.body.offers.length,1);
   assert.equal(g.body.offers[0].price_eur,12.5);
   assert.equal(Object.hasOwn(g.body.offers[0],'review_reference'),false);
-  assert.deepEqual(commands,['GET','LPUSH','LTRIM','EXPIRE','LRANGE','GET']);
+  assert.deepEqual(commands,['GET','GET','LPUSH','LTRIM','EXPIRE','LRANGE','GET','GET']);
 });
 test('GET ignores corrupted, expired, duplicate records',async()=>{
   setup();const good=fixture();
@@ -145,6 +161,33 @@ test('ingest is off unless explicitly enabled',async()=>{
 test('revoked review blocks an item already in feed',async()=>{
   setup();const offer=fixture();addTrustedReview(offer);saved=[JSON.stringify(offer)];
   reviews.delete(storefrontEvidenceKey(offer.review_reference));
+  const r=response();await handlePublicOffers(request('GET'),r);
+  assert.equal(r.code,200);assert.deepEqual(r.body.offers,[]);
+});
+
+test('signed price proof is mandatory even with approved editorial record',async()=>{
+  setup();const offer=fixture();addTrustedReview(offer);priceProofs.clear();
+  const r=response();await handlePublicOffers(request('POST',{headers:auth,body:{offer}}),r);
+  assert.equal(r.code,422);assert.equal(r.body.error,'signed_price_proof_missing');
+});
+test('signed proof with wrong price cannot reach the public feed',async()=>{
+  setup();const offer=fixture();addTrustedReview(offer);
+  const proofKey=storefrontPriceProofKey(offer.review_reference);
+  const proof=JSON.parse(priceProofs.get(proofKey));
+  proof.claims.price_cents+=1;
+  priceProofs.set(proofKey,JSON.stringify(proof));
+  const r=response();await handlePublicOffers(request('POST',{headers:auth,body:{offer}}),r);
+  assert.equal(r.code,422);assert.equal(r.body.error,'price_proof_claim_mismatch');
+});
+test('missing public verifier key blocks ingestion',async()=>{
+  setup();const offer=fixture();addTrustedReview(offer);
+  delete process.env.AFFARERADAR_CREATORS_PRICE_PUBLIC_KEY_PEM;
+  const r=response();await handlePublicOffers(request('POST',{headers:auth,body:{offer}}),r);
+  assert.equal(r.code,422);assert.equal(r.body.error,'price_proof_key_not_configured');
+});
+test('revoked price proof removes a previously reviewed item from feed',async()=>{
+  setup();const offer=fixture();addTrustedReview(offer);saved=[JSON.stringify(offer)];
+  priceProofs.delete(storefrontPriceProofKey(offer.review_reference));
   const r=response();await handlePublicOffers(request('GET'),r);
   assert.equal(r.code,200);assert.deepEqual(r.body.offers,[]);
 });
