@@ -40,3 +40,10 @@ Per ciascuna offerta candidata, il revisore deve registrare in un registro autor
 
 ## Decisione
 **HOLD / REVIEW_REQUIRED.** Branch e PR #36 rimangono isolati. Nessun merge/deploy production/Telegram posting senza nuovo consenso, test di integrazione attendibili ed evidenze dei controlli mancanti.
+
+## Hardening tecnico aggiuntivo (2026-11-22)
+- Introdotto `lib/storefront-evidence-gate.js`: lega record pubblicabile a un documento di revisione *separato* in Redis mediante digest SHA-256 di identita, prezzo, fonte, timestamp, scadenza e reference; richiede due revisori distinti e metadati di diritti/prezzo/stock/spedizione.
+- `lib/public-offers-handler.js` rilegge il documento a ogni inserimento e lettura: mancanza, scadenza, digest diverso o revoca bloccano il record. Nessun endpoint per generare automaticamente il documento trusted; il flusso rimane in HOLD fino a un writer autenticato separato e alla prova reale dei diritti.
+- Su Vercel preview: POST disabilitato; GET offre una risposta vuota indipendentemente dal Redis condiviso. Su production il POST e' disabilitato per default se non e' esplicitamente impostato `AFFARERADAR_STOREFRONT_INGEST_ENABLED=true`. Non configurare il flag senza una revisione separata.
+- Una coppia di id revisore e una reference licenza nel documento trusted non provano da soli che esistano due esseri umani, un contratto o un dato Amazon autenticato. SHA-256 rileva differenze fra i campi ma NON autentica la fonte, per cui il gate di rilascio resta **HOLD**.
+- Test di rifiuto aggiunti: record trusted assente, digest falsificato, due id revisore uguali, revoca, preview isolata e ingest disabilitato. L'esito CI della nuova revisione va verificato separatamente.
