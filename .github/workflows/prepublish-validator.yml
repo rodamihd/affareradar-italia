@@ -8,6 +8,7 @@ on:
       - "api/dashboard.js"
       - "lib/public-offer-validation.js"
       - "lib/public-offers-handler.js"
+      - "lib/storefront-evidence-gate.js"
       - "lib/pre-publish-validator.js"
       - "lib/pre-publish-validator-selftest.js"
       - "tests/*.test.mjs"
@@ -39,6 +40,7 @@ jobs:
           node --check api/dashboard.js
           node --check lib/public-offer-validation.js
           node --check lib/public-offers-handler.js
+          node --check lib/storefront-evidence-gate.js
 
       - name: Run legacy pre-publish validator
         run: node lib/pre-publish-validator-selftest.js
