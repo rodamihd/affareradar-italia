@@ -16,7 +16,9 @@ function esc(s) {
   return String(s ?? "")
     .replaceAll("&","&amp;")
     .replaceAll("<","&lt;")
-    .replaceAll(">","&gt;");
+    .replaceAll(">","&gt;")
+    .replaceAll('"',"&quot;")
+    .replaceAll("'","&#39;");
 }
 
 export function eligibleForFreshTopFive(e, now = Date.now()) {
@@ -25,10 +27,19 @@ export function eligibleForFreshTopFive(e, now = Date.now()) {
   const verified = typeof verifiedAt === "string" ? Date.parse(verifiedAt) : NaN;
   if (e.verification?.state !== "VERIFIED" ||
       !Number.isFinite(verified) || verified > now || now - verified > 10 * 60000) return false;
-  if (e.stock === false || e.agentLifecycle === "EXPIRED" || e.agentLifecycle === "STALE") return false;
+  const state = typeof e.agentLifecycle === "object"
+    ? e.agentLifecycle?.status
+    : e.agentLifecycle;
+  if (["EXPIRED", "STALE", "BLOCKED", "ARCHIVED"].includes(String(state || "").toUpperCase())) return false;
+  if (e.dealType !== "reward" && e.stock !== true) return false;
   const until = e.promotionValidUntil || e.rewardValidUntil || e.agentLifecycle?.validUntil;
   if (until && (!Number.isFinite(Date.parse(until)) || Date.parse(until) <= now)) return false;
-  if (!e.amazonUrl || !/^https:\/\/(?:[a-z0-9-]+\.)?amazon\.it\//i.test(e.amazonUrl)) return false;
+  try {
+    const url = new URL(e.amazonUrl);
+    if (url.protocol !== "https:" || url.username || url.password || url.port ||
+        !["amazon.it", "www.amazon.it"].includes(url.hostname.toLowerCase()) ||
+        !/\/(?:dp|gp\/product)\/[A-Z0-9]{10}(?:\/|$)/i.test(url.pathname)) return false;
+  } catch { return false; }
   return true;
 }
 
