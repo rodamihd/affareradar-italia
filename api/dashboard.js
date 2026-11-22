@@ -21,6 +21,7 @@ import {
 import { startRuntimeObservation, runtimeSuccess, runtimeFailure } from "../lib/runtime-observability.js";
 import { redisConfig, redisCommand } from "../lib/redis-rest.js";
 import { missionControlSnapshot, recordOutcomeRegistryEvent } from "../lib/decision-outcome-registry.js";
+import { handlePublicOffers } from "../lib/public-offers-handler.js";
 
 function authorized(req) {
   const secret = process.env.PUBLISH_SECRET;
@@ -711,6 +712,13 @@ export default async function handler(req, res) {
   const __obs = startRuntimeObservation(req, "/api/dashboard");
   if (req.method !== "GET" && req.method !== "POST") {
     return res.status(405).json({ ok:false, error:"method_not_allowed" });
+  }
+
+  // Public storefront uses a restricted read-only projection. Editorial ingest
+  // requires independent review authorization in addition to PUBLISH_SECRET.
+  if ((req.method === "GET" && req.query?.public_offers === "1") ||
+      (req.method === "POST" && req.body?.action === "submit_approved_public_offer")) {
+    return handlePublicOffers(req, res);
   }
 
   if (!authorized(req)) {
