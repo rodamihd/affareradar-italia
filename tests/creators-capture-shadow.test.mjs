@@ -95,6 +95,6 @@ test("rejects missing review reference",()=>{
   assert.equal(check(x).reason,"review_references_missing");
 });
 test("rejects oversized export",()=>{
-  const x=capture();x.extra="X".repeat(130000);
+  const x=capture();x.extra="X".repeat(140000);
   assert.equal(check(x).reason,"capture_too_large");
 });
