@@ -88,6 +88,9 @@ async function trackMetric(event, body, extra = {}) {
     effectivePrice:body.effectivePrice || body.price || null,
     discount:body.discount || null,
     coupon:body.coupon || null,
+    stock:body.stock === true,
+    promotionValidUntil:body.promotionValidUntil || null,
+    rewardValidUntil:body.rewardValidUntil || null,
     amazonUrl:body.amazonUrl || null,
     prime:body.prime === true,
     ...extra

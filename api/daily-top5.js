@@ -16,13 +16,37 @@ function esc(s) {
   return String(s ?? "")
     .replaceAll("&","&amp;")
     .replaceAll("<","&lt;")
-    .replaceAll(">","&gt;");
+    .replaceAll(">","&gt;")
+    .replaceAll('"',"&quot;")
+    .replaceAll("'","&#39;");
 }
 
-function rank(events) {
+export function eligibleForFreshTopFive(e, now = Date.now()) {
+  if (!e || (e.event !== "published" && e.event !== "manual_published")) return false;
+  const verifiedAt = e.verification?.verifiedAt;
+  const verified = typeof verifiedAt === "string" ? Date.parse(verifiedAt) : NaN;
+  if (e.verification?.state !== "VERIFIED" ||
+      !Number.isFinite(verified) || verified > now || now - verified > 10 * 60000) return false;
+  const state = typeof e.agentLifecycle === "object"
+    ? e.agentLifecycle?.status
+    : e.agentLifecycle;
+  if (["EXPIRED", "STALE", "BLOCKED", "ARCHIVED"].includes(String(state || "").toUpperCase())) return false;
+  if (e.dealType !== "reward" && e.stock !== true) return false;
+  const until = e.promotionValidUntil || e.rewardValidUntil || e.agentLifecycle?.validUntil;
+  if (until && (!Number.isFinite(Date.parse(until)) || Date.parse(until) <= now)) return false;
+  try {
+    const url = new URL(e.amazonUrl);
+    if (url.protocol !== "https:" || url.username || url.password || url.port ||
+        !["amazon.it", "www.amazon.it"].includes(url.hostname.toLowerCase()) ||
+        !/\/(?:dp|gp\/product)\/[A-Z0-9]{10}(?:\/|$)/i.test(url.pathname)) return false;
+  } catch { return false; }
+  return true;
+}
+
+function rank(events, now = Date.now()) {
   const seen = new Set();
   const candidates = events
-    .filter(e => e && (e.event === "published" || e.event === "manual_published"))
+    .filter(e => eligibleForFreshTopFive(e, now))
     .filter(e => {
       const key = e.asin || e.dealId || e.amazonUrl || e.title;
       if (!key || seen.has(key)) return false;
@@ -149,13 +173,13 @@ export default async function handler(req, res) {
 
   const agentOsDagTick = await tickAgentOsDags(req);
   const lifecycleChanges = await refreshPublishedLifecycles(events);
-  const picks = rank(recent);
+  const picks = rank(recent, Date.now());
   if (!picks.length) {
-    return res.status(200).json({ ok:true, published:false, reason:"no_published_deals_last_24h" });
+    return res.status(200).json({ ok:true, published:false, reason:"no_fresh_verified_deals_for_top5" });
   }
 
   const lines = [
-    "<b>🏆 TOP 5 AFFARERADAR — ultime 24 ore</b>",
+    "<b>🏆 AFFARERADAR — offerte verificate di recente</b>",
     "",
     ...picks.flatMap((e,i) => {
       const price = e.effectivePrice || e.price || "";
@@ -170,6 +194,7 @@ export default async function handler(req, res) {
     }),
     "👍 Utile   🔥 Affare forte   ❌ Non più valido",
     "",
+    "ℹ️ Prezzi e disponibilità possono cambiare: verifica sempre il totale sul negozio.",
     "🔗 I link Amazon possono essere affiliati."
   ];
 
