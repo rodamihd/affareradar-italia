@@ -55,3 +55,12 @@ Per ciascuna offerta candidata, il revisore deve registrare in un registro autor
 - La chiave privata NON deve risiedere su Vercel, nel repository o nei file dei test; soltanto i test producono coppie di chiavi fittizie in memoria.
 - Prima di un rilascio commerciale: confermare account ed endpoint secondo documentazione corrente, autorizzazioni e limiti di memorizzazione/esposizione del Program Content, introdurre servizio firmatario indipendente con controlli di origine e ruolo, valutare key rotation, replay e revoca, e convalidare prezzo totale e spedizione con una fonte autorizzata.
 - Il gate non certifica dati di mercato in tempo reale e non abilita il Top5 automatico. Lo stato rimane **HOLD**.
+
+## Adapter Creators API — acquisizione offline SHADOW (2026-11-23)
+- Aggiunto `lib/creators-capture-shadow.js`, un adattatore per **esportazioni JSON curate ed esplicitamente fornite**. Verifica il contratto interno `affareradar.creators.getitems.capture.v1` con esattamente un ASIN, `www.amazon.it`, timestamp entro 5 minuti, identità prodotto e URL, una sola inserzione, prezzo centesimale EUR, disponibilità `IN_STOCK`, venditore e assenza di errori parziali.
+- Rifiuta valute differenti, più inserzioni ambigue, restrizioni Prime, promozioni scadute e campi non attendibili. Per i casi consentiti emette **solo `SCHEMA_OK_SHADOW_ONLY`** con `publication_allowed:false`, `signing_allowed:false`, `provider_origin_verified:false`, `shipping_verified:false`. Non crea evidenze `approved` e non collega l'endpoint produttivo.
+- La struttura JSON `capture.v1` è **un contratto locale curato per test**, non la dichiarazione che gli oggetti rispecchino esattamente i campi della risposta grezza Amazon in tutte le versioni. Prima di qualsiasi adapter reale confrontare i campi con la documentazione ufficiale e campioni realmente autorizzati.
+- Non memorizza token, non firma dati, non effettua HTTP, non registra allegati reali, non modifica la durata di freschezza del Top 5.
+- Test sintetici: `tests/creators-capture-shadow.test.mjs`, inclusi nel workflow CI. I risultati dei test per questa revisione devono essere verificati sui log del commit che li introduce.
+
+**Stato:** `HOLD` — lo schema verificato non è evidenza di autenticità, disponibilità effettiva, diritto a cache/redistribuzione, costo totale o idoneità dell'account Amazon.
